@@ -11,7 +11,7 @@ public enum TensorDataType: UInt8, Codable {
     case uint8 = 7
     case bool = 8
 
-    func swiftType() -> Any.Type {
+    public func swiftType() -> Any.Type {
         switch self {
         case .float32: return Float.self
         case .float16: return Float16.self
@@ -25,7 +25,7 @@ public enum TensorDataType: UInt8, Codable {
         }
     }
 
-    var byteSize: Int {
+    public var byteSize: Int {
         switch self {
         case .float32: return 4
         case .float16: return 2
@@ -39,11 +39,11 @@ public enum TensorDataType: UInt8, Codable {
 }
 
 public struct TensorMetadata: Codable {
-    var dtype: TensorDataType
-    var shape: [Int]
-    var dataOffsets: [Int]
+    public var dtype: TensorDataType
+    public var shape: [Int]
+    public var dataOffsets: [Int]
 
-    enum CodingKeys: String, CodingKey {
+    public enum CodingKeys: String, CodingKey {
         case dtype
         case shape
         case dataOffsets = "data_offsets"
@@ -72,7 +72,7 @@ public class LazyWeightsData {
         self.metadata = try JSONDecoder().decode([String: TensorMetadata].self, from: metaData)
     }
 
-    func loadParameter(at offset: [Int]) throws -> Data {
+    public func loadParameter(at offset: [Int]) throws -> Data {
         return try queue.sync {
             try fileHandle.seek(toOffset: UInt64(offset[0]))
             guard let data = try fileHandle.read(upToCount: offset[1] - offset[0]) else {
@@ -82,7 +82,7 @@ public class LazyWeightsData {
         }
     }
 
-    func loadParameter(at offset: [Int], process: (Data) throws -> Data) throws -> Data {
+    public func loadParameter(at offset: [Int], process: (Data) throws -> Data) throws -> Data {
         return try queue.sync {
             try fileHandle.seek(toOffset: UInt64(offset[0]))
             guard let data = try fileHandle.read(upToCount: offset[1] - offset[0]) else {
