@@ -51,25 +51,18 @@ public struct TensorMetadata: Codable {
 }
 
 public class LazyWeightsData {
-    public let filePath: String
-    public let fileSize: Int
+    public let filePath: URL
     private let fileHandle: FileHandle
-    private let metadata: [String: TensorMetadata]
+    private let metadata: [URL: TensorMetadata]
 
     private let queue = DispatchQueue(label: "com.lazyweights.queue")
 
-    public init(filePath: String, metaDataPath: String) throws {
+    public init(filePath: URL, metaDataPath: String) throws {
         self.filePath = filePath
-
-        guard let size = try FileManager.default.attributesOfItem(atPath: filePath)[.size] as? Int else {
-            throw WeightsError.invalidFileSize
-        }
-        self.fileSize = size
-
-        let url = URL(fileURLWithPath: filePath)
+        let url = filePath
         self.fileHandle = try FileHandle(forReadingFrom: url)
         let metaData = try Data(contentsOf: URL(fileURLWithPath: metaDataPath))
-        self.metadata = try JSONDecoder().decode([String: TensorMetadata].self, from: metaData)
+        self.metadata = try JSONDecoder().decode([URL: TensorMetadata].self, from: metaData)
     }
 
     public func loadParameter(at offset: [Int]) throws -> Data {
