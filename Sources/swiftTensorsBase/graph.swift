@@ -54,12 +54,12 @@ public protocol TensorType {
 }
 
 public struct Tensor<T: TensorType> {
-    let id: UUID
-    var shape: [Int]
-    let name: String?
-    let backend: computeType
-    let dataType: dataType
-    var storage: T.tensorStorage?
+    public let id: UUID
+    public var shape: [Int]
+    public let name: String?
+    public let backend: computeType
+    public let dataType: dataType
+    public var storage: T.tensorStorage?
 }
 
 extension Tensor {
@@ -105,12 +105,12 @@ public final class Node: Equatable, Hashable {
     }
 }
 
-extension Node {
-    public convenience init(op: graphOp, inputs: [Node]) {
+public extension Node {
+    convenience init(op: graphOp, inputs: [Node]) {
         self.init(op: op, inputs: inputs, outputs: [])
     }
 
-    public convenience init(op: graphOp) {
+    convenience init(op: graphOp) {
         self.init(op: op, inputs: [], outputs: [])
     }
 }
@@ -159,13 +159,13 @@ public struct Conv2DParams {
 }
 
 public struct MultiHeadAttentionParams {
-    let numHeads: Int
-    let headDim: Int
-    let hiddenSize: Int
+    public let numHeads: Int
+    public let headDim: Int
+    public let hiddenSize: Int
     public let dataType: dataType
-    let scalingFactor: Float?
-    let dropoutProb: Float?
-    let useAttentionMask: Bool
+    public let scalingFactor: Float?
+    public let dropoutProb: Float?
+    public let useAttentionMask: Bool
 }
 
 extension Node {
