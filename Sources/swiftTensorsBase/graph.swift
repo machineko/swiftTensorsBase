@@ -60,6 +60,24 @@ public struct Tensor<T: TensorType> {
     public let backend: computeType
     public let dataType: dataType
     public var storage: T.tensorStorage?
+
+    public init(
+        id: UUID = UUID(),
+        shape: [Int],
+        name: String? = nil,
+        backend: computeType,
+        dataType: dataType,
+        storage: T.tensorStorage? = nil
+    ) {
+        self.id = id
+        self.shape = shape
+        self.name = name
+        self.backend = backend
+        self.dataType = dataType
+        self.storage = storage
+    }
+
+
 }
 
 extension Tensor {
