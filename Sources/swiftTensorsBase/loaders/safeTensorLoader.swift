@@ -53,7 +53,7 @@ public struct TensorMetadata: Codable {
 public class LazyWeightsData {
     public let filePath: URL
     private let fileHandle: FileHandle
-    private let metadata: [URL: TensorMetadata]
+    private let metadata: [String: TensorMetadata]
 
     private let queue = DispatchQueue(label: "com.lazyweights.queue")
 
@@ -61,7 +61,7 @@ public class LazyWeightsData {
         self.filePath = filePath
         self.fileHandle = try FileHandle(forReadingFrom: filePath)
         let metaData = try Data(contentsOf: metaDataPath)
-        self.metadata = try JSONDecoder().decode([URL: TensorMetadata].self, from: metaData)
+        self.metadata = try JSONDecoder().decode([String: TensorMetadata].self, from: metaData)
     }
 
     public func loadParameter(at offset: [Int]) throws -> Data {
