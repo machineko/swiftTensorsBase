@@ -1,6 +1,6 @@
 import Foundation
 
-public protocol graphDtypes: Sendable {}
+public protocol graphDtypes: Sendable & Numeric {}
 extension Float32: graphDtypes {}
 extension Float16: graphDtypes {}
 extension Int64: graphDtypes {}
@@ -11,7 +11,6 @@ extension UInt64: graphDtypes {}
 extension UInt32: graphDtypes {}
 extension UInt16: graphDtypes {}
 extension UInt8: graphDtypes {}
-extension Bool: graphDtypes {}
 
 extension graphDtypes {
     public var stride: Int {
