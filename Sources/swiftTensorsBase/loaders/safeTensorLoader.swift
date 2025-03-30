@@ -1,0 +1,105 @@
+import Foundation
+
+public enum TensorDataType: UInt8, Codable {
+    case float32 = 0
+    case float16 = 1
+    case float64 = 2
+    case int64 = 3
+    case int32 = 4
+    case int16 = 5
+    case int8 = 6
+    case uint8 = 7
+    case bool = 8
+
+    func swiftType() -> Any.Type {
+        switch self {
+        case .float32: return Float.self
+        case .float16: return Float16.self
+        case .float64: return Double.self
+        case .int64: return Int64.self
+        case .int32: return Int32.self
+        case .int16: return Int16.self
+        case .int8: return Int8.self
+        case .uint8: return UInt8.self
+        case .bool: return Bool.self
+        }
+    }
+
+    var byteSize: Int {
+        switch self {
+        case .float32: return 4
+        case .float16: return 2
+        case .float64: return 8
+        case .int64: return 8
+        case .int32: return 4
+        case .int16: return 2
+        case .int8, .uint8, .bool: return 1
+        }
+    }
+}
+
+public struct TensorMetadata: Codable {
+    var dtype: TensorDataType
+    var shape: [Int]
+    var dataOffsets: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case dtype
+        case shape
+        case dataOffsets = "data_offsets"
+    }
+}
+
+public class LazyWeightsData {
+    public let filePath: String
+    public let fileSize: Int
+    private let fileHandle: FileHandle
+    private let metadata: [String: TensorMetadata]
+
+    private let queue = DispatchQueue(label: "com.lazyweights.queue")
+
+    public init(filePath: String, metaDataPath: String) throws {
+        self.filePath = filePath
+
+        guard let size = try FileManager.default.attributesOfItem(atPath: filePath)[.size] as? Int else {
+            throw WeightsError.invalidFileSize
+        }
+        self.fileSize = size
+
+        let url = URL(fileURLWithPath: filePath)
+        self.fileHandle = try FileHandle(forReadingFrom: url)
+        let metaData = try Data(contentsOf: URL(fileURLWithPath: metaDataPath))
+        self.metadata = try JSONDecoder().decode([String: TensorMetadata].self, from: metaData)
+    }
+
+    func loadParameter(at offset: [Int]) throws -> Data {
+        return try queue.sync {
+            try fileHandle.seek(toOffset: UInt64(offset[0]))
+            guard let data = try fileHandle.read(upToCount: offset[1] - offset[0]) else {
+                throw WeightsError.readFailed
+            }
+            return data
+        }
+    }
+
+    func loadParameter(at offset: [Int], process: (Data) throws -> Data) throws -> Data {
+        return try queue.sync {
+            try fileHandle.seek(toOffset: UInt64(offset[0]))
+            guard let data = try fileHandle.read(upToCount: offset[1] - offset[0]) else {
+                throw WeightsError.readFailed
+            }
+            return data
+        }
+    }
+
+    deinit {
+        try? fileHandle.close()
+    }
+}
+
+public enum WeightsError: Error {
+    case invalidFileSize
+    case readOutOfBounds
+    case readFailed
+    case incompletRead(expected: Int, actual: Int)
+}
