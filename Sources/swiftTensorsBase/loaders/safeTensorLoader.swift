@@ -57,11 +57,10 @@ public class LazyWeightsData {
 
     private let queue = DispatchQueue(label: "com.lazyweights.queue")
 
-    public init(filePath: URL, metaDataPath: String) throws {
+    public init(filePath: URL, metaDataPath: URL) throws {
         self.filePath = filePath
-        let url = filePath
-        self.fileHandle = try FileHandle(forReadingFrom: url)
-        let metaData = try Data(contentsOf: URL(fileURLWithPath: metaDataPath))
+        self.fileHandle = try FileHandle(forReadingFrom: filePath)
+        let metaData = try Data(contentsOf: metaDataPath)
         self.metadata = try JSONDecoder().decode([URL: TensorMetadata].self, from: metaData)
     }
 
