@@ -10,7 +10,7 @@ import Testing
     let e = b + d
     let f = e.relu()
 
-    let sortedNodes = try f.generateTopologicalOrder()
+    let sortedNodes = f.generateTopologicalOrder()
 
     #expect(sortedNodes.contains(where: { $0.id == a.id }))
     #expect(sortedNodes.contains(where: { $0.id == b.id }))

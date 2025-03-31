@@ -450,7 +450,7 @@ extension Node {
 
     public func emptyGraphStateDict<T>() throws -> StateDict<T> {
         var stateDict = StateDict<T>()
-        let orderedNodes = try self.generateTopologicalOrder()
+        let orderedNodes = self.generateTopologicalOrder()
 
         for node in orderedNodes {
             switch node.op {
