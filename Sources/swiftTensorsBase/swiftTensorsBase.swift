@@ -1,6 +1,6 @@
 import Logging
 
-public let logger = Logger(label: "swiftTensors.logger")
+nonisolated(unsafe) public var logger = Logger(label: "swiftTensors.logger")
 
 extension dataType {
     public var byteSize: Int {
