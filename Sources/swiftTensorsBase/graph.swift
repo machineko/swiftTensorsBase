@@ -149,6 +149,7 @@ public enum graphOp {
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
     case variable(_ name: String, _ shape: [Int], dataType: dataType)
     case conv2d(Conv2DParams)
+    case rsqrt
     case relu, tanh, gelu, sigmoid
     case leakyRelu(_ slope: Float)
     case softmax(_ dim: Int)
@@ -163,11 +164,12 @@ public enum graphOp {
     case add, subtract, mul
     case to(_ dataType: dataType)
     case matMul
+    case clamp(_ min: Node, _ max: Node)
+    case mean(_ dim: Int)
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case multiHeadAttention(MultiHeadAttentionParams)
-
 }
 
 public struct Conv2DParams {
@@ -176,6 +178,7 @@ public struct Conv2DParams {
     public let kernelSize: (Int, Int)
     public let stride: (Int, Int)
     public let padding: (Int, Int)
+    public let padStyle: padStyle
     public let dilation: (Int, Int)
     public let groups: Int
     public let useBias: Bool
@@ -194,6 +197,16 @@ public struct MultiHeadAttentionParams {
     public let scalingFactor: Float?
     public let dropoutProb: Float?
     public let useAttentionMask: Bool
+
+    public init(numHeads: Int, headDim: Int, hiddenSize: Int, dataType: dataType, scalingFactor: Float? = nil, dropoutProb: Float? = nil, useAttentionMask: Bool = false) {
+        self.numHeads = numHeads
+        self.headDim = headDim
+        self.hiddenSize = hiddenSize
+        self.dataType = dataType
+        self.scalingFactor = scalingFactor
+        self.dropoutProb = dropoutProb
+        self.useAttentionMask = useAttentionMask
+    }
 }
 
 extension Node {
@@ -302,6 +315,40 @@ extension Node {
             kernelSize: kernelSize,
             stride: stride,
             padding: padding,
+            padStyle: .explicit,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: fullName
+        )
+        return Node(op: .conv2d(params), inputs: [input])
+    }
+    
+    public static func conv2d(
+        input: Node,
+        inChannels: Int,
+        outChannels: Int,
+        kernelSize: (Int, Int) = (1, 1),
+        stride: (Int, Int) = (1, 1),
+        dilation: (Int, Int) = (1, 1),
+        groups: Int = 1,
+        padStyle: padStyle,
+        dataLayout: convDataLayout = .NCHW,
+        dataType: dataType = .float32,
+        name: String? = nil,
+        useBias: Bool = true,
+        scopeManager: ScopeManager
+    ) -> Node {
+        let fullName = scopeManager.fullPath(for: name ?? "conv")
+        let params = Conv2DParams(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: stride,
+            padding: (0,0),
+            padStyle: padStyle,
             dilation: dilation,
             groups: groups,
             useBias: useBias,
@@ -374,6 +421,10 @@ extension Node {
         return Node.init(op: .leakyRelu(slope), inputs: [self])
     }
 
+    public func GELU() -> Node {
+        return Node.init(op: .gelu, inputs: [self])
+    }
+
     public func pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout) -> Node {
         return Node.init(op: .pixelUnshuffle(scale, dataLayout: dataLayout), inputs: [self])
     }
@@ -384,6 +435,22 @@ extension Node {
 
     public func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
         return Node(op: .interpolateNearest(scaleFactor: scaleFactor, dataLayout: dataLayout), inputs: [self])
+    }
+
+    public func expandDim(_ dim: Int) -> Node {
+        return Node(op: .expandDim(dim), inputs: [self])
+    }
+
+    public func clamp(_ min: Node, _ max: Node) -> Node {
+        return Node(op: .clamp(min, max), inputs: [self])
+    }
+
+    public func mean(_ dim: Int) -> Node {
+        return Node(op: .mean(dim), inputs: [self])
+    }
+    
+    public func rsqrt() -> Node {
+        return Node(op: .rsqrt, inputs: [self])
     }
 }
 
