@@ -442,7 +442,7 @@ extension Node {
     }
 
     public func clamp(_ min: Node, _ max: Node) -> Node {
-        return Node(op: .clamp(min, max), inputs: [self])
+        return Node(op: .clamp(min, max), inputs: [self, min, max])
     }
 
     public func mean(_ dim: Int) -> Node {
