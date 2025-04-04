@@ -53,7 +53,7 @@ public struct TensorMetadata: Codable {
 public class LazyWeightsData {
     public let filePath: URL
     private let fileHandle: FileHandle
-    private let metadata: [String: TensorMetadata]
+    public let metadata: [String: TensorMetadata]
 
     private let queue = DispatchQueue(label: "com.lazyweights.queue")
 
@@ -80,7 +80,7 @@ public class LazyWeightsData {
             guard let data = try fileHandle.read(upToCount: offset[1] - offset[0]) else {
                 throw WeightsError.readFailed
             }
-            return data
+            return try process(data)
         }
     }
 
