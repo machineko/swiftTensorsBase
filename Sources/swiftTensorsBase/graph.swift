@@ -166,6 +166,7 @@ public enum graphOp {
     case matMul
     case clamp(_ min: Node, _ max: Node)
     case mean(_ dim: Int)
+    case sliceDim(_ dim: Int, upTo: Node)
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
@@ -451,6 +452,10 @@ extension Node {
     
     public func rsqrt() -> Node {
         return Node(op: .rsqrt, inputs: [self])
+    }
+
+    public func sliceDim(dim: Int, length: Node) -> Node {
+        return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
     }
 }
 
