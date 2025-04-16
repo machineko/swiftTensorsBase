@@ -171,6 +171,7 @@ public enum graphOp {
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case multiHeadAttention(MultiHeadAttentionParams)
+    case gather(dim: Int)
 }
 
 public struct Conv2DParams {
@@ -456,6 +457,10 @@ extension Node {
 
     public func sliceDim(dim: Int, length: Node) -> Node {
         return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
+    }
+
+    public func gather(indexTensor: Node, dim: Int) -> Node {
+        return Node(op: .gather(dim: dim), inputs: [self, indexTensor])
     }
 }
 
