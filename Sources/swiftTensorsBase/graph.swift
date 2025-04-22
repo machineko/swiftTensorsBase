@@ -149,7 +149,7 @@ public enum graphOp {
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
     case variable(_ name: String, _ shape: [Int], dataType: dataType)
     case conv2d(Conv2DParams)
-    case rsqrt
+    case rsqrt, sqrt
     case relu, tanh, gelu, sigmoid
     case leakyRelu(_ slope: Float)
     case softmax(_ dim: Int)
@@ -161,17 +161,21 @@ public enum graphOp {
     case cat(_ dim: Int)
     case catWith(_ with: Node, dim: Int)
     case splitOutput(parentNode: UUID, index: Int)
-    case add, subtract, mul
+    case add, subtract, mul, division
     case to(_ dataType: dataType)
     case matMul
     case clamp(_ min: Node, _ max: Node)
-    case mean(_ dim: Int)
+    case mean(_ dim: Int), sum(_ dim: Int)
     case sliceDim(_ dim: Int, upTo: Node)
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case multiHeadAttention(MultiHeadAttentionParams)
     case gather(dim: Int)
+    case argMax(dim: Int)
+    case power(_ exponent: Float)
+    case squeeze(_ dim: Int)
+//    case shapeOf(_ node: Node)
 }
 
 public struct Conv2DParams {
@@ -270,6 +274,10 @@ extension Node {
 
     public static func * (lhs: Node, rhs: Node) -> Node {
         return .init(op: .mul, inputs: [lhs, rhs])
+    }
+    
+    public static func / (lhs: Node, rhs: Node) -> Node {
+        return .init(op: .division, inputs: [lhs, rhs])
     }
 
     public static func relu(_ input: Node) -> Node {
@@ -387,20 +395,20 @@ extension Node {
 
 }
 
-extension Node {
-    public func transpose(dim: Int, with: Int) -> Node {
+public extension Node {
+    func transpose(dim: Int, with: Int) -> Node {
         return Node(op: .transpose(dim, with), inputs: [self])
     }
 
-    public func permute(dims: [Int]) -> Node {
+    func permute(dims: [Int]) -> Node {
         return Node(op: .permute(dims), inputs: [self])
     }
 
-    public func matMul(_ with: Node) -> Node {
+    func matMul(_ with: Node) -> Node {
         return Node(op: .matMul, inputs: [self, with])
     }
 
-    public func split(
+    func split(
         numSplits: Int,
         axis: Int
     ) -> [Node] {
@@ -415,52 +423,76 @@ extension Node {
         return outputNodes
     }
 
-    public func softMax(dim: Int) -> Node {
+    func softMax(dim: Int) -> Node {
         return Node.init(op: .softmax(dim), inputs: [self])
     }
 
-    public func leakyReLU(_ slope: Float) -> Node {
+    func leakyReLU(_ slope: Float) -> Node {
         return Node.init(op: .leakyRelu(slope), inputs: [self])
     }
 
-    public func GELU() -> Node {
+    func GELU() -> Node {
         return Node.init(op: .gelu, inputs: [self])
     }
 
-    public func pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout) -> Node {
+    func pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout) -> Node {
         return Node.init(op: .pixelUnshuffle(scale, dataLayout: dataLayout), inputs: [self])
     }
 
-    public func catWith(_ with: Node, dim: Int) -> Node {
+    func catWith(_ with: Node, dim: Int) -> Node {
         return Node(op: .catWith(with, dim: dim), inputs: [self, with])
     }
 
-    public func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
+    func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
         return Node(op: .interpolateNearest(scaleFactor: scaleFactor, dataLayout: dataLayout), inputs: [self])
     }
 
-    public func expandDim(_ dim: Int) -> Node {
+    func expandDim(_ dim: Int) -> Node {
         return Node(op: .expandDim(dim), inputs: [self])
     }
 
-    public func clamp(_ min: Node, _ max: Node) -> Node {
+    func clamp(_ min: Node, _ max: Node) -> Node {
         return Node(op: .clamp(min, max), inputs: [self, min, max])
     }
 
-    public func mean(_ dim: Int) -> Node {
+    func mean(_ dim: Int) -> Node {
         return Node(op: .mean(dim), inputs: [self])
     }
     
-    public func rsqrt() -> Node {
+    func rsqrt() -> Node {
         return Node(op: .rsqrt, inputs: [self])
     }
+    
+    func sqrt() -> Node {
+        return Node(op: .sqrt, inputs: [self])
+    }
 
-    public func sliceDim(dim: Int, length: Node) -> Node {
+    func sliceDim(dim: Int, length: Node) -> Node {
         return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
     }
 
-    public func gather(indexTensor: Node, dim: Int) -> Node {
+    func gather(indexTensor: Node, dim: Int) -> Node {
         return Node(op: .gather(dim: dim), inputs: [self, indexTensor])
+    }
+    
+    func to(_ dataType: dataType) -> Node {
+        return Node(op: .to(dataType), inputs: [self])
+    }
+    
+    func argMax(dim: Int) -> Node {
+        return Node(op: .argMax(dim: dim), inputs: [self])
+    }
+    
+    func sum(dim: Int) -> Node {
+        return Node(op: .sum(dim), inputs: [self])
+    }
+    
+    func power(_ exponent: Float) -> Node {
+        return Node(op: .power(exponent), inputs: [self])
+    }
+    
+    func squeeze(dim: Int) -> Node {
+        return Node(op: .squeeze(dim), inputs: [self])
     }
 }
 
