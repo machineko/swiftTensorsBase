@@ -175,6 +175,7 @@ public enum graphOp {
     case argMax(dim: Int)
     case power(_ exponent: Float)
     case squeeze(_ dim: Int)
+    case constPad(_ padding: [(Int, Int)], _ value: Float)
 //    case shapeOf(_ node: Node)
 }
 
@@ -493,6 +494,10 @@ public extension Node {
     
     func squeeze(dim: Int) -> Node {
         return Node(op: .squeeze(dim), inputs: [self])
+    }
+    
+    func zeroPad(_ padding: [(Int, Int)]) -> Node {
+        return Node(op: .constPad(padding, 0.0), inputs: [self])
     }
 }
 
