@@ -14,7 +14,10 @@ extension Int16: graphDtypes {}
 extension Int8: graphDtypes {}
 extension UInt64: graphDtypes {}
 extension UInt32: graphDtypes {}
+#if !arch(x86_64)
 extension UInt16: graphDtypes {}
+#endif
+
 extension UInt8: graphDtypes {}
 
 extension graphDtypes {
