@@ -56,7 +56,7 @@ public enum dataType {
 }
 
 public enum computeType {
-    case metal, cpu, accelerate, cuda, mpsGraph
+    case metal, cpu, accelerate, cuda, mpsGraph, cudnn
 }
 
 public protocol TensorType {
@@ -148,6 +148,7 @@ public enum graphOp {
     case constant(_ name: String, _ shape: [Int], dataType: dataType)
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
     case variable(_ name: String, _ shape: [Int], dataType: dataType)
+    case matmul
     case conv2d(Conv2DParams)
     case rsqrt, sqrt
     case relu, tanh, gelu, sigmoid
@@ -178,6 +179,11 @@ public enum graphOp {
     case constPad(_ padding: [(Int, Int)], _ value: Float)
     case log
     case reduceMaximum(_ dim: Int)
+    case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
+    case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
+    case dynamicQuantize(targetType: dataType)
+    case quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
+    case dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
 //    case ifElse(_ condition: Node, _ then: () -> Node, _ else: (() -> Node)?, numOutputs: Int)
 //    case conditionalOutput(parentNode: UUID, index: Int)
 
@@ -197,6 +203,7 @@ public struct Conv2DParams {
     public let dataLayout: convDataLayout
     public let dataType: dataType
     public let name: String
+    public let quantParams: (any QuantizationStats)? = nil
     public var weightName: String { "\(name).weight" }
     public var biasName: String { "\(name).bias" }
 }
@@ -540,6 +547,7 @@ extension Node {
 public struct StateDict<T: TensorType> {
     public var pendingParameters: Set<String> = []
     public var parameters: [String: Tensor<T>] = [:]
+    public var quantParameters: [String: QuantizationStats] = [:]
 
     public init() {}
 
@@ -551,6 +559,12 @@ public struct StateDict<T: TensorType> {
         pendingParameters.insert(name)
     }
 
+    public mutating func updateParameterWithQuant(name: String, tensor: Tensor<T>, quantStats: some QuantizationStats) {
+        parameters[name] = tensor
+        quantParameters[name] = quantStats
+        pendingParameters.remove(name)
+    }
+    
     public mutating func updateParameter(name: String, tensor: Tensor<T>) {
         parameters[name] = tensor
         pendingParameters.remove(name)

@@ -38,15 +38,85 @@ public enum TensorDataType: UInt8, Codable {
     }
 }
 
+
+public struct QuantizationInfo: Codable {
+    public let scale: Float
+    public let zeroPoint: Float
+    public let axis: Int?
+    public let scales: [Float]?
+    public let zeroPoints: [Float]?
+    public let quantizedDtype: TensorDataType
+    public let originalDtype: TensorDataType
+
+    public enum CodingKeys: String, CodingKey {
+        case scale
+        case zeroPoint = "zero_point"
+        case axis
+        case scales
+        case zeroPoints = "zero_points"
+        case quantizedDtype = "quantized_dtype"
+        case originalDtype = "original_dtype"
+    }
+
+    public init(
+        scale: Float,
+        zeroPoint: Float,
+        quantizedDtype: TensorDataType,
+        originalDtype: TensorDataType
+    ) {
+        self.scale = scale
+        self.zeroPoint = zeroPoint
+        self.axis = nil
+        self.scales = nil
+        self.zeroPoints = nil
+        self.quantizedDtype = quantizedDtype
+        self.originalDtype = originalDtype
+    }
+
+    public init(
+        scales: [Float],
+        zeroPoints: [Float],
+        axis: Int,
+        quantizedDtype: TensorDataType,
+        originalDtype: TensorDataType
+    ) {
+        self.scale = 0
+        self.zeroPoint = 0
+        self.axis = axis
+        self.scales = scales
+        self.zeroPoints = zeroPoints
+        self.quantizedDtype = quantizedDtype
+        self.originalDtype = originalDtype
+    }
+
+    public var isPerChannel: Bool {
+        return scales != nil && zeroPoints != nil && axis != nil
+    }
+}
+
 public struct TensorMetadata: Codable {
     public var dtype: TensorDataType
     public var shape: [Int]
     public var dataOffsets: [Int]
+    public var quantization: QuantizationInfo?
 
     public enum CodingKeys: String, CodingKey {
         case dtype
         case shape
         case dataOffsets = "data_offsets"
+        case quantization
+    }
+
+    public var isQuantized: Bool {
+        return quantization != nil
+    }
+
+    public var effectiveDtype: TensorDataType {
+        return quantization?.quantizedDtype ?? dtype
+    }
+
+    public var originalDtype: TensorDataType {
+        return quantization?.originalDtype ?? dtype
     }
 }
 
