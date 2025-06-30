@@ -8,8 +8,6 @@ public struct QuantizationBaseStats: QuantizationStats {
     public let dataType: dataType
 
     public init(scale: Float, zeroPoint: Float, dataType: dataType) {
-        precondition(dataType == .int8 || dataType == .uint8,
-                     "Quantization currently supports only int8 and uint8")
         self.scale = scale
         self.zeroPoint = zeroPoint
         self.dataType = dataType
