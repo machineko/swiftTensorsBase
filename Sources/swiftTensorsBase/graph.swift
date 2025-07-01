@@ -1,6 +1,11 @@
 import Foundation
 
+#if arch(x86_64)
+    public typealias Float16 = UInt16
+#endif
+
 public protocol graphDtypes: Sendable & Numeric {}
+
 extension Float32: graphDtypes {}
 extension Float16: graphDtypes {}
 extension Int64: graphDtypes {}
@@ -9,7 +14,10 @@ extension Int16: graphDtypes {}
 extension Int8: graphDtypes {}
 extension UInt64: graphDtypes {}
 extension UInt32: graphDtypes {}
+#if !arch(x86_64)
 extension UInt16: graphDtypes {}
+#endif
+
 extension UInt8: graphDtypes {}
 
 extension graphDtypes {
