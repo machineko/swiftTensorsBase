@@ -27,16 +27,3 @@ let package = Package(
         ),
     ]
 )
-
-package.targets
-    .filter { $0.type != .binary }
-    .forEach {
-        $0.swiftSettings = [
-            .unsafeFlags([
-                "-Xfrontend",
-                "-warn-long-function-bodies=140",
-                "-Xfrontend",
-                "-warn-long-expression-type-checking=100",
-            ])
-        ]
-    }
