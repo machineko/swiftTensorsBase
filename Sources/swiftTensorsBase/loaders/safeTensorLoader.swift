@@ -1,6 +1,6 @@
 import Foundation
 
-public enum TensorDataType: UInt8, Codable {
+public enum TensorDataType: UInt8, Codable, Sendable {
     case float32 = 0
     case float16 = 1
     case float64 = 2
@@ -38,8 +38,12 @@ public enum TensorDataType: UInt8, Codable {
     }
 }
 
+public struct EncryptionInfo: Codable, Sendable {
+    public let algorithm: encryptionAlgorithm
+    public let keyName: String
+}
 
-public struct QuantizationInfo: Codable {
+public struct QuantizationInfo: Codable, Sendable {
     public let scale: Float
     public let zeroPoint: Float
     public let axis: Int?
@@ -94,23 +98,30 @@ public struct QuantizationInfo: Codable {
     }
 }
 
-public struct TensorMetadata: Codable {
+public struct TensorMetadata: Codable, Sendable {
     public var dtype: TensorDataType
     public var shape: [Int]
     public var dataOffsets: [Int]
     public var quantization: QuantizationInfo?
-
+    public var encryption: EncryptionInfo?
+    
+    
     public enum CodingKeys: String, CodingKey {
         case dtype
         case shape
         case dataOffsets = "data_offsets"
         case quantization
+        case encryption
     }
-
+    
     public var isQuantized: Bool {
         return quantization != nil
     }
-
+    
+    public var isEncrypted: Bool {
+        return encryption != nil
+    }
+    
     public var effectiveDtype: TensorDataType {
         return quantization?.quantizedDtype ?? dtype
     }

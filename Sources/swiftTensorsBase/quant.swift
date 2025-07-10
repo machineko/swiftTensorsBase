@@ -1,8 +1,8 @@
 import Foundation
 
-public protocol QuantizationStats {}
+public protocol QuantizationStats: Sendable, Codable {}
 
-public struct QuantizationBaseStats: QuantizationStats {
+public struct QuantizationBaseStats: QuantizationStats, Sendable, Codable {
     public let scale: Float
     public let zeroPoint: Float
     public let dataType: dataType
@@ -14,79 +14,92 @@ public struct QuantizationBaseStats: QuantizationStats {
     }
 }
 
-public extension Node {
-    func quantize(scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
-        precondition(targetType == .int8 || targetType == .uint8,
-                     "Target type must be int8 or uint8")
-        return Node(op: .quantize(scale: scale, zeroPoint: zeroPoint, targetType: targetType),
-                   inputs: [self])
+extension Node {
+    public func quantize(scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
+        precondition(
+            targetType == .int8 || targetType == .uint8,
+            "Target type must be int8 or uint8")
+        return Node(
+            op: .quantize(scale: scale, zeroPoint: zeroPoint, targetType: targetType),
+            inputs: [self])
     }
 
-    func dequantize(scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
-        precondition(self.dataType == .int8 || self.dataType == .uint8,
-                     "Source type must be int8 or uint8")
-        return Node(op: .dequantize(scale: scale, zeroPoint: zeroPoint, targetType: targetType),
-                   inputs: [self])
+    public func dequantize(scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
+        precondition(
+            self.dataType == .int8 || self.dataType == .uint8,
+            "Source type must be int8 or uint8")
+        return Node(
+            op: .dequantize(scale: scale, zeroPoint: zeroPoint, targetType: targetType),
+            inputs: [self])
     }
 
-    func quantize(params: QuantizationStats) -> Node {
+    public func quantize(params: QuantizationStats) -> Node {
         if let params = params as? QuantizationBaseStats {
             return quantize(scale: params.scale, zeroPoint: params.zeroPoint, to: params.dataType)
-        }
-        else {
+        } else {
             fatalError("Not implemented yet")
         }
     }
 
-    func dequantize(params: QuantizationStats) -> Node {
+    public func dequantize(params: QuantizationStats) -> Node {
         if let params = params as? QuantizationBaseStats {
             return dequantize(scale: params.scale, zeroPoint: params.zeroPoint, to: params.dataType)
-        }
-        else {
+        } else {
             fatalError("Not implemented yet")
         }
     }
 
-    func dynamicQuantize(to targetType: dataType) -> Node {
-        precondition(targetType == .int8 || targetType == .uint8,
-                     "Target type must be int8 or uint8")
+    public func dynamicQuantize(to targetType: dataType) -> Node {
+        precondition(
+            targetType == .int8 || targetType == .uint8,
+            "Target type must be int8 or uint8")
         return Node(op: .dynamicQuantize(targetType: targetType), inputs: [self])
     }
 
-    func quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, to targetType: dataType) -> Node {
-        precondition(targetType == .int8 || targetType == .uint8,
-                     "Target type must be int8 or uint8")
-        precondition(scales.count == zeroPoints.count,
-                     "Scales and zero points must have the same count")
-        return Node(op: .quantizePerChannel(scales: scales, zeroPoints: zeroPoints,
-                                          axis: axis, targetType: targetType),
-                   inputs: [self])
+    public func quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, to targetType: dataType) -> Node {
+        precondition(
+            targetType == .int8 || targetType == .uint8,
+            "Target type must be int8 or uint8")
+        precondition(
+            scales.count == zeroPoints.count,
+            "Scales and zero points must have the same count")
+        return Node(
+            op: .quantizePerChannel(
+                scales: scales, zeroPoints: zeroPoints,
+                axis: axis, targetType: targetType),
+            inputs: [self])
     }
 
-    func dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, from targetType: dataType) -> Node {
-        precondition(self.dataType == .int8 || self.dataType == .uint8,
-                     "Source type must be int8 or uint8")
-        precondition(scales.count == zeroPoints.count,
-                     "Scales and zero points must have the same count")
-        return Node(op: .dequantizePerChannel(scales: scales, zeroPoints: zeroPoints,
-                                            axis: axis, targetType: targetType),
-                   inputs: [self])
+    public func dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, from targetType: dataType) -> Node {
+        precondition(
+            self.dataType == .int8 || self.dataType == .uint8,
+            "Source type must be int8 or uint8")
+        precondition(
+            scales.count == zeroPoints.count,
+            "Scales and zero points must have the same count")
+        return Node(
+            op: .dequantizePerChannel(
+                scales: scales, zeroPoints: zeroPoints,
+                axis: axis, targetType: targetType),
+            inputs: [self])
     }
 }
 
-public extension Node {
-    static func quantize(input: Node, scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
+extension Node {
+    public static func quantize(input: Node, scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
         return input.quantize(scale: scale, zeroPoint: zeroPoint, to: targetType)
     }
 
-    static func dequantize(input: Node, scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
+    public static func dequantize(input: Node, scale: Float, zeroPoint: Float, to targetType: dataType) -> Node {
         return input.dequantize(scale: scale, zeroPoint: zeroPoint, to: targetType)
     }
 }
 
 public struct QuantizationHelpers {
-    public static func calculateQuantizationParams(min: Float, max: Float,
-                                                  targetType: dataType) -> QuantizationBaseStats {
+    public static func calculateQuantizationParams(
+        min: Float, max: Float,
+        targetType: dataType
+    ) -> QuantizationBaseStats {
         let qmin: Float
         let qmax: Float
 
@@ -107,8 +120,10 @@ public struct QuantizationHelpers {
         return QuantizationBaseStats(scale: scale, zeroPoint: zeroPoint, dataType: targetType)
     }
 
-    public static func quantizeValue(_ value: Float, scale: Float, zeroPoint: Float,
-                                   targetType: dataType) -> Int {
+    public static func quantizeValue(
+        _ value: Float, scale: Float, zeroPoint: Float,
+        targetType: dataType
+    ) -> Int {
         let quantized = round(value / scale + zeroPoint)
 
         switch targetType {
