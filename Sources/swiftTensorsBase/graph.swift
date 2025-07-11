@@ -15,7 +15,7 @@ extension Int8: graphDtypes {}
 extension UInt64: graphDtypes {}
 extension UInt32: graphDtypes {}
 #if !arch(x86_64)
-extension UInt16: graphDtypes {}
+    extension UInt16: graphDtypes {}
 #endif
 
 extension UInt8: graphDtypes {}
@@ -30,40 +30,40 @@ extension graphDtypes {
     }
 }
 
-public enum padStyle: Sendable {
+public enum padStyle: Sendable, Codable {
     case explicit, valid, same
 }
 
-public enum padMode: Sendable {
+public enum padMode: Sendable, Codable {
     case zero, reflect, symmetric, clamp, const
 }
 
-public enum convDataLayout: Sendable {
+public enum convDataLayout: Sendable, Codable  {
     case NCHW, NHWC
 }
 
-public enum convWeightLayout: Sendable {
+public enum convWeightLayout: Sendable, Codable  {
     case OIHW, HWIO
 }
 
-public enum ExecutionError: Error {
+public enum ExecutionError: Sendable, Codable, Error {
     case invalidOperation
     case memoryAllocationFailed
     case invalidShape
     case parameterNotFound
 }
 
-enum GraphError: Error {
+enum GraphError: Sendable, Codable, Error {
     case cycleDetected
 }
 
-public enum dataType {
+public enum dataType: Sendable, Codable {
     case float16, float32, bfloat16, float8, float64
     case int8, int16, int32, int64
     case uint8, uint16, uint32, uint64
 }
 
-public enum computeType {
+public enum computeType: Sendable, Codable  {
     case metal, cpu, accelerate, cuda, mpsGraph, cudnn
 }
 
@@ -95,7 +95,6 @@ public struct Tensor<T: TensorType> {
         self.storage = storage
     }
 
-
 }
 
 extension Tensor {
@@ -120,7 +119,7 @@ extension Tensor {
     }
 }
 
-public final class Node: Equatable, Hashable {
+public final class Node: Equatable, Hashable, Sendable {
     public static func == (lhs: Node, rhs: Node) -> Bool {
         lhs.id == rhs.id
     }
@@ -141,17 +140,17 @@ public final class Node: Equatable, Hashable {
     }
 }
 
-public extension Node {
-    convenience init(op: graphOp, inputs: [Node]) {
+extension Node {
+    public convenience init(op: graphOp, inputs: [Node]) {
         self.init(op: op, inputs: inputs, outputs: [])
     }
 
-    convenience init(op: graphOp) {
+    public convenience init(op: graphOp) {
         self.init(op: op, inputs: [], outputs: [])
     }
 }
 
-public enum graphOp {
+public enum graphOp: Sendable {
     case placeholder(_ name: String, _ shape: [Int], dataType: dataType)
     case constant(_ name: String, _ shape: [Int], dataType: dataType)
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
@@ -174,7 +173,8 @@ public enum graphOp {
     case to(_ dataType: dataType)
     case matMul
     case clamp(_ min: Node, _ max: Node)
-    case mean(_ dim: Int), sum(_ dim: Int)
+    case mean(_ dim: Int)
+    case sum(_ dim: Int)
     case sliceDim(_ dim: Int, upTo: Node)
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
@@ -192,13 +192,11 @@ public enum graphOp {
     case dynamicQuantize(targetType: dataType)
     case quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
     case dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
-//    case ifElse(_ condition: Node, _ then: () -> Node, _ else: (() -> Node)?, numOutputs: Int)
-//    case conditionalOutput(parentNode: UUID, index: Int)
+    case conv2dEncrypted(Conv2DParams, encryptionAlgorithm: encryptionAlgorithm)
 
-//    case shapeOf(_ node: Node)
 }
 
-public struct Conv2DParams {
+public struct Conv2DParams: Sendable {
     public let inChannels: Int
     public let outChannels: Int
     public let kernelSize: (Int, Int)
@@ -211,12 +209,13 @@ public struct Conv2DParams {
     public let dataLayout: convDataLayout
     public let dataType: dataType
     public let name: String
-    public let quantParams: (any QuantizationStats)? = nil
+//    public let quantParams: (any QuantizationStats)? = nil
+    public let encryptionParams: EncryptionInfo? = nil
     public var weightName: String { "\(name).weight" }
     public var biasName: String { "\(name).bias" }
 }
 
-public struct MultiHeadAttentionParams {
+public struct MultiHeadAttentionParams: Sendable, Codable {
     public let numHeads: Int
     public let headDim: Int
     public let hiddenSize: Int
@@ -225,7 +224,10 @@ public struct MultiHeadAttentionParams {
     public let dropoutProb: Float?
     public let useAttentionMask: Bool
 
-    public init(numHeads: Int, headDim: Int, hiddenSize: Int, dataType: dataType, scalingFactor: Float? = nil, dropoutProb: Float? = nil, useAttentionMask: Bool = false) {
+    public init(
+        numHeads: Int, headDim: Int, hiddenSize: Int, dataType: dataType, scalingFactor: Float? = nil, dropoutProb: Float? = nil,
+        useAttentionMask: Bool = false
+    ) {
         self.numHeads = numHeads
         self.headDim = headDim
         self.hiddenSize = hiddenSize
@@ -296,7 +298,7 @@ extension Node {
     public static func * (lhs: Node, rhs: Node) -> Node {
         return .init(op: .mul, inputs: [lhs, rhs])
     }
-    
+
     public static func / (lhs: Node, rhs: Node) -> Node {
         return .init(op: .division, inputs: [lhs, rhs])
     }
@@ -322,6 +324,10 @@ extension Node {
     public static func constant(_ name: String, shape: [Int], _ dataType: dataType, _ scopeManager: ScopeManager) -> Node {
         let fullName = scopeManager.fullPath(for: name)
         return Node(op: .constant(fullName, shape, dataType: dataType))
+    }
+
+    public static func constantScalar(_ value: Float, shape: [Int], _ dataType: dataType) -> Node {
+        return Node(op: .constantScalar(value, shape: shape, dataType: dataType))
     }
 
     public static func conv2d(
@@ -357,6 +363,59 @@ extension Node {
         return Node(op: .conv2d(params), inputs: [input])
     }
     
+    public static func conv2dEncrypted(
+        input: Node,
+        inChannels: Int,
+        outChannels: Int,
+        kernelSize: (Int, Int) = (1, 1),
+        stride: (Int, Int) = (1, 1),
+        padding: (Int, Int) = (0, 0),
+        dilation: (Int, Int) = (1, 1),
+        groups: Int = 1,
+        dataLayout: convDataLayout = .NCHW,
+        dataType: dataType = .float32,
+        name: String? = nil,
+        useBias: Bool = true,
+        mode: encryptionAlgorithm, key: Node? = nil,
+        a: Node? = nil, b: Node? = nil, c: Node? = nil,
+        scopeManager: ScopeManager
+    ) -> Node {
+        let fullName = scopeManager.fullPath(for: name ?? "conv")
+        let params = Conv2DParams(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: stride,
+            padding: padding,
+            padStyle: .explicit,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: fullName
+        )
+        switch mode {
+        case .offset:
+            guard let key = key else {
+                fatalError("Node key need to be provided for encryption with offset")
+            }
+            return Node(op: .conv2dEncrypted(params, encryptionAlgorithm: mode), inputs: [input, key])
+
+        case .poly:
+            guard let a = a,
+                  let b = b,
+                  let c = c
+            else {
+                fatalError("Node a,b,c need to get inside poly encryption")
+            }
+            return Node(op: .conv2dEncrypted(params, encryptionAlgorithm: mode), inputs: [input, a,b,c])
+
+        }
+    }
+    
+    
+
     public static func conv2d(
         input: Node,
         inChannels: Int,
@@ -378,7 +437,7 @@ extension Node {
             outChannels: outChannels,
             kernelSize: kernelSize,
             stride: stride,
-            padding: (0,0),
+            padding: (0, 0),
             padStyle: padStyle,
             dilation: dilation,
             groups: groups,
@@ -416,20 +475,20 @@ extension Node {
 
 }
 
-public extension Node {
-    func transpose(dim: Int, with: Int) -> Node {
+extension Node {
+    public func transpose(dim: Int, with: Int) -> Node {
         return Node(op: .transpose(dim, with), inputs: [self])
     }
 
-    func permute(dims: [Int]) -> Node {
+    public func permute(dims: [Int]) -> Node {
         return Node(op: .permute(dims), inputs: [self])
     }
 
-    func matMul(_ with: Node) -> Node {
+    public func matMul(_ with: Node) -> Node {
         return Node(op: .matMul, inputs: [self, with])
     }
 
-    func split(
+    public func split(
         numSplits: Int,
         axis: Int
     ) -> [Node] {
@@ -444,87 +503,87 @@ public extension Node {
         return outputNodes
     }
 
-    func softMax(dim: Int) -> Node {
+    public func softMax(dim: Int) -> Node {
         return Node.init(op: .softmax(dim), inputs: [self])
     }
 
-    func leakyReLU(_ slope: Float) -> Node {
+    public func leakyReLU(_ slope: Float) -> Node {
         return Node.init(op: .leakyRelu(slope), inputs: [self])
     }
 
-    func GELU() -> Node {
+    public func GELU() -> Node {
         return Node.init(op: .gelu, inputs: [self])
     }
 
-    func pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout) -> Node {
+    public func pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout) -> Node {
         return Node.init(op: .pixelUnshuffle(scale, dataLayout: dataLayout), inputs: [self])
     }
 
-    func catWith(_ with: Node, dim: Int) -> Node {
+    public func catWith(_ with: Node, dim: Int) -> Node {
         return Node(op: .catWith(with, dim: dim), inputs: [self, with])
     }
 
-    func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
+    public func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
         return Node(op: .interpolateNearest(scaleFactor: scaleFactor, dataLayout: dataLayout), inputs: [self])
     }
 
-    func expandDim(_ dim: Int) -> Node {
+    public func expandDim(_ dim: Int) -> Node {
         return Node(op: .expandDim(dim), inputs: [self])
     }
 
-    func clamp(_ min: Node, _ max: Node) -> Node {
+    public func clamp(_ min: Node, _ max: Node) -> Node {
         return Node(op: .clamp(min, max), inputs: [self, min, max])
     }
 
-    func mean(_ dim: Int) -> Node {
+    public func mean(_ dim: Int) -> Node {
         return Node(op: .mean(dim), inputs: [self])
     }
-    
-    func rsqrt() -> Node {
+
+    public func rsqrt() -> Node {
         return Node(op: .rsqrt, inputs: [self])
     }
-    
-    func sqrt() -> Node {
+
+    public func sqrt() -> Node {
         return Node(op: .sqrt, inputs: [self])
     }
 
-    func sliceDim(dim: Int, length: Node) -> Node {
+    public func sliceDim(dim: Int, length: Node) -> Node {
         return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
     }
 
-    func gather(indexTensor: Node, dim: Int) -> Node {
+    public func gather(indexTensor: Node, dim: Int) -> Node {
         return Node(op: .gather(dim: dim), inputs: [self, indexTensor])
     }
-    
-    func to(_ dataType: dataType) -> Node {
+
+    public func to(_ dataType: dataType) -> Node {
         return Node(op: .to(dataType), inputs: [self])
     }
-    
-    func argMax(dim: Int) -> Node {
+
+    public func argMax(dim: Int) -> Node {
         return Node(op: .argMax(dim: dim), inputs: [self])
     }
-    
-    func sum(dim: Int) -> Node {
+
+    public func sum(dim: Int) -> Node {
         return Node(op: .sum(dim), inputs: [self])
     }
-    
-    func power(_ exponent: Float) -> Node {
+
+    public func power(_ exponent: Float) -> Node {
         return Node(op: .power(exponent), inputs: [self])
     }
-    
-    func squeeze(dim: Int) -> Node {
+
+    public func squeeze(dim: Int) -> Node {
         return Node(op: .squeeze(dim), inputs: [self])
     }
-    
-    func zeroPad(_ padding: [(Int, Int)]) -> Node {
+
+    public func zeroPad(_ padding: [(Int, Int)]) -> Node {
         return Node(op: .constPad(padding, 0.0), inputs: [self])
     }
-    
-    func log() -> Node {
+
+    public func log() -> Node {
         return Node(op: .log, inputs: [self])
     }
-    
-    func reduceMaximum(dim: Int) -> Node {
+
+    public func reduceMaximum(dim: Int) -> Node {
         return Node(op: .reduceMaximum(dim), inputs: [self])
     }
 }
@@ -556,6 +615,7 @@ public struct StateDict<T: TensorType> {
     public var pendingParameters: Set<String> = []
     public var parameters: [String: Tensor<T>] = [:]
     public var quantParameters: [String: QuantizationStats] = [:]
+    public var encryptionParameters: [String: EncryptionInfo] = [:]
 
     public init() {}
 
@@ -573,6 +633,10 @@ public struct StateDict<T: TensorType> {
         pendingParameters.remove(name)
     }
     
+    public mutating func updateEncryption(name: String, encryption: EncryptionInfo) {
+        encryptionParameters[name] = encryption
+    }
+
     public mutating func updateParameter(name: String, tensor: Tensor<T>) {
         parameters[name] = tensor
         pendingParameters.remove(name)
@@ -608,6 +672,11 @@ extension Node {
             case .constant(let name, _, _):
                 stateDict.registerParameter(name: name)
             case .conv2d(let params):
+                stateDict.registerParameter(name: params.weightName)
+                if params.useBias {
+                    stateDict.registerParameter(name: params.biasName)
+                }
+            case .conv2dEncrypted(let params, _):
                 stateDict.registerParameter(name: params.weightName)
                 if params.useBias {
                     stateDict.registerParameter(name: params.biasName)
