@@ -193,6 +193,8 @@ public enum graphOp: Sendable {
     case quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
     case dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
     case conv2dEncrypted(Conv2DParams, encryptionAlgorithm: encryptionAlgorithm)
+//    case linear(weights: Node, bias: Node)
+//    case linearLora(weights: Node, bias: Node, α: Node, r: Node)
 
 }
 
@@ -705,6 +707,11 @@ extension Conv2DParams {
         return [outChannels, inChannelsPerGroup, kernelSize.0, kernelSize.1]
     }
 
+    public var weightShapeOHWI: [Int] {
+        let inChannelsPerGroup = inChannels / groups
+        return [outChannels, kernelSize.0, kernelSize.1, inChannelsPerGroup]
+    }
+    
     /// Format: [outChannels]
     public var biasShape: [Int]? {
         if useBias {
