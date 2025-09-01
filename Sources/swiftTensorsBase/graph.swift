@@ -156,9 +156,9 @@ public enum graphOp: Sendable {
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
     case variable(_ name: String, _ shape: [Int], dataType: dataType)
     case matmul
-    case conv2d(Conv2DParams)
+
     case rsqrt, sqrt
-    case relu, tanh, gelu, sigmoid
+    case relu, tanh, gelu, sigmoid, silu
     case leakyRelu(_ slope: Float)
     case softmax(_ dim: Int)
     case split(_ numSplits: Int, dim: Int)
@@ -187,11 +187,17 @@ public enum graphOp: Sendable {
     case constPad(_ padding: [(Int, Int)], _ value: Float)
     case log
     case reduceMaximum(_ dim: Int)
+    
+    case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
+    
+    case conv2d(Conv2DParams)
+    
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dynamicQuantize(targetType: dataType)
     case quantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
     case dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
+    
     case conv2dEncrypted(Conv2DParams, encryptionAlgorithm: encryptionAlgorithm)
 //    case linear(weights: Node, bias: Node)
 //    case linearLora(weights: Node, bias: Node, α: Node, r: Node)
@@ -311,6 +317,10 @@ extension Node {
 
     public func relu() -> Node {
         return .init(op: .relu, inputs: [self])
+    }
+    
+    public func SiLU() -> Node {
+        return .init(op: .silu, inputs: [self])
     }
 
     public static func placeholder(_ name: String, shape: [Int], _ dataType: dataType, _ scopeManager: ScopeManager) -> Node {
@@ -587,6 +597,12 @@ extension Node {
 
     public func reduceMaximum(dim: Int) -> Node {
         return Node(op: .reduceMaximum(dim), inputs: [self])
+    }
+}
+
+public extension Node {
+    func groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = false, dataLayout: convDataLayout = .NCHW) -> Node {
+        return Node(op: .groupNorm2d(groups: groups, channels: channels, eps: eps, weights: weights, bias: bias, affine: affine, dataLayout: dataLayout), inputs: [self])
     }
 }
 
