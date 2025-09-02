@@ -199,7 +199,7 @@ public enum graphOp: Sendable {
     case dequantizePerChannel(scales: [Float], zeroPoints: [Float], axis: Int, targetType: dataType)
     
     case conv2dEncrypted(Conv2DParams, encryptionAlgorithm: encryptionAlgorithm)
-    case linear
+    case linear(weights: Node, bias: Node? = nil)
 //    case linearLora(weights: Node, bias: Node, α: Node, r: Node)
 
 }
@@ -488,11 +488,7 @@ public extension Node {
 }
 public extension Node {
     func linear(weights: Node, bias: Node?) -> Node {
-        var inputs = [self, weights]
-        if let bias = bias {
-            inputs.append(bias)
-        }
-        return Node(op: .linear, inputs: inputs)
+        return Node(op: .linear(weights: weights, bias: bias), inputs: [self])
     }
 }
 
