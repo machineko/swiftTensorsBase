@@ -337,7 +337,12 @@ public extension Node {
         let fullName = scopeManager.fullPath(for: name)
         return Node(op: .constant(fullName, shape, dataType: dataType))
     }
-
+    
+    public static func constant(fullName: String, shape: [Int], _ dataType: dataType) -> Node {
+//        let fullName = scopeManager.fullPath(for: name)
+        return Node(op: .constant(fullName, shape, dataType: dataType))
+    }
+    
     public static func constantScalar(_ value: Float, shape: [Int], _ dataType: dataType) -> Node {
         return Node(op: .constantScalar(value, shape: shape, dataType: dataType))
     }
