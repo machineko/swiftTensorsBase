@@ -205,20 +205,20 @@ public enum graphOp: Sendable {
 }
 
 public struct Conv2DParams: Sendable {
-    public let inChannels: Int
-    public let outChannels: Int
-    public let kernelSize: (Int, Int)
-    public let stride: (Int, Int)
-    public let padding: (Int, Int)
-    public let padStyle: padStyle
-    public let dilation: (Int, Int)
-    public let groups: Int
-    public let useBias: Bool
-    public let dataLayout: convDataLayout
-    public let dataType: dataType
-    public let name: String
+    public var inChannels: Int
+    public var outChannels: Int
+    public var kernelSize: (Int, Int)
+    public var stride: (Int, Int)
+    public var padding: (Int, Int)
+    public var padStyle: padStyle
+    public var dilation: (Int, Int)
+    public var groups: Int
+    public var useBias: Bool
+    public var dataLayout: convDataLayout
+    public var dataType: dataType
+    public var name: String
 //    public let quantParams: (any QuantizationStats)? = nil
-    public let encryptionParams: EncryptionInfo? = nil
+    public var encryptionParams: EncryptionInfo? = nil
     public var weightName: String { "\(name).weight" }
     public var biasName: String { "\(name).bias" }
 }
