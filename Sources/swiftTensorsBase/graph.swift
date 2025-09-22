@@ -182,7 +182,7 @@ public enum graphOp: Sendable {
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
 //    case multiHeadAttention(MultiHeadAttentionParams)
     case tril(diagonal: Int, value: Float = 0.0), triu(diagonal: Int, value: Float = 0.0)
-    case scaledDotProductAttention(query: Node, key: Node, value: Node, attnMask: Node?, isCausal: Bool = false)
+    case scaledDotProductAttention(query: Node, key: Node, value: Node, attnMask: Node?, params: attentionParams)
     case gather(dim: Int)
     case argMax(dim: Int)
     case power(_ exponent: Float)
@@ -224,28 +224,40 @@ public struct Conv2DParams: Sendable {
     public var encryptionParams: EncryptionInfo? = nil
     public var weightName: String { "\(name).weight" }
     public var biasName: String { "\(name).bias" }
+    
+    public init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int), padStyle: padStyle, dilation: (Int, Int), groups: Int, useBias: Bool, dataLayout: convDataLayout, dataType: dataType, name: String, encryptionParams: EncryptionInfo? = nil) {
+        self.inChannels = inChannels
+        self.outChannels = outChannels
+        self.kernelSize = kernelSize
+        self.stride = stride
+        self.padding = padding
+        self.padStyle = padStyle
+        self.dilation = dilation
+        self.groups = groups
+        self.useBias = useBias
+        self.dataLayout = dataLayout
+        self.dataType = dataType
+        self.name = name
+        self.encryptionParams = encryptionParams
+    }
 }
 
-public struct MultiHeadAttentionParams: Sendable, Codable {
+public struct attentionParams: Sendable, Codable {
     public let numHeads: Int
     public let headDim: Int
-    public let hiddenSize: Int
-    public let dataType: dataType
     public let scalingFactor: Float?
     public let dropoutProb: Float?
-    public let useAttentionMask: Bool
+    public let isCausal: Bool
 
     public init(
-        numHeads: Int, headDim: Int, hiddenSize: Int, dataType: dataType, scalingFactor: Float? = nil, dropoutProb: Float? = nil,
-        useAttentionMask: Bool = false
+        numHeads: Int, headDim: Int, scalingFactor: Float? = nil, dropoutProb: Float? = nil,
+        isCausal: Bool = false
     ) {
         self.numHeads = numHeads
         self.headDim = headDim
-        self.hiddenSize = hiddenSize
-        self.dataType = dataType
         self.scalingFactor = scalingFactor
         self.dropoutProb = dropoutProb
-        self.useAttentionMask = useAttentionMask
+        self.isCausal = isCausal
     }
 }
 
@@ -496,9 +508,23 @@ public extension Node {
 }
 public extension Node {
     func linear(weights: Node, bias: Node?) -> Node {
-        return Node(op: .linear(weights: weights, bias: bias), inputs: [self])
+        var inputs = [self, weights]
+        if let bias = bias {
+            inputs.append(bias)
+        }
+        return Node(op: .linear(weights: weights, bias: bias), inputs: inputs)
+    }
+    
+    func scaledDotProductAttention(query: Node, key: Node, value: Node, attnMask: Node?, params: attentionParams) -> Node {
+        var inputs = [self, query, key, value]
+        if let attnMask = attnMask {
+            inputs.append(attnMask)
+        }
+        return Node(op: .scaledDotProductAttention(query: query, key: key, value: value, attnMask: attnMask, params: params), inputs: inputs)
     }
 }
+
+
 
 public extension Node {
     func transpose(dim: Int, with: Int) -> Node {
