@@ -156,7 +156,7 @@ public enum graphOp: Sendable {
     case constantScalar(_ value: Float, shape: [Int] = [1], dataType: dataType)
     case variable(_ name: String, _ shape: [Int], dataType: dataType)
     case matmul
-
+    case sin, cos
     case rsqrt, sqrt
     case relu, tanh, gelu, sigmoid, silu
     case leakyRelu(_ slope: Float)
@@ -176,7 +176,9 @@ public enum graphOp: Sendable {
     case clamp(_ min: Node, _ max: Node)
     case mean(_ dim: Int)
     case sum(_ dim: Int)
+    case arange(start: Int, end: Int, step: Int, dataType: dataType)
     case sliceDim(_ dim: Int, upTo: Node)
+    case sliceStatic(from: [Int], upTo: [Int], stride: [Int])
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
@@ -188,7 +190,7 @@ public enum graphOp: Sendable {
     case power(_ exponent: Float)
     case squeeze(_ dim: Int)
     case constPad(_ padding: [(Int, Int)], _ value: Float)
-    case log
+    case log, exp
     case reduceMaximum(_ dim: Int)
     
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
@@ -310,6 +312,10 @@ public struct Executor {
 }
 
 public extension Node {
+    
+    static func arange(_ start: Int, _ end: Int, step: Int = 1, dataType: dataType = .float32) -> Node {
+        return .init(op: .arange(start: start, end: end, step: step, dataType: dataType))
+    }
     static func + (lhs: Node, rhs: Node) -> Node {
         return .init(op: .add, inputs: [lhs, rhs])
     }
@@ -530,6 +536,7 @@ public extension Node {
     func transpose(dim: Int, with: Int) -> Node {
         return Node(op: .transpose(dim, with), inputs: [self])
     }
+    
 
     func permute(dims: [Int]) -> Node {
         return Node(op: .permute(dims), inputs: [self])
@@ -618,6 +625,12 @@ public extension Node {
     func sliceDim(dim: Int, length: Node) -> Node {
         return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
     }
+    
+    func sliceStatic(_ from: [Int], upTo: [Int], stride: [Int]) -> Node {
+        let fromCount = from.count
+        precondition(fromCount == upTo.count && fromCount == stride.count, "Shape of from, upTo and stride need to be the same")
+        return Node(op: .sliceStatic(from: from, upTo: upTo, stride: stride), inputs: [self])
+    }
 
     func gather(indexTensor: Node, dim: Int) -> Node {
         return Node(op: .gather(dim: dim), inputs: [self, indexTensor])
@@ -650,7 +663,19 @@ public extension Node {
     func log() -> Node {
         return Node(op: .log, inputs: [self])
     }
-
+    
+    func exp() -> Node {
+        return Node(op: .exp, inputs: [self])
+    }
+    
+    func sin() -> Node {
+        return Node(op: .sin, inputs: [self])
+    }
+    
+    func cos() -> Node {
+        return Node(op: .cos, inputs: [self])
+    }
+    
     func reduceMaximum(dim: Int) -> Node {
         return Node(op: .reduceMaximum(dim), inputs: [self])
     }
