@@ -205,7 +205,7 @@ public enum graphOp: Sendable {
     
     case conv2dEncrypted(Conv2DParams, encryptionAlgorithm: encryptionAlgorithm)
     case linear(weights: Node, bias: Node? = nil)
-//    case linearLora(weights: Node, bias: Node, α: Node, r: Node)
+    case linearLora(weights: Node, bias: Node, loraA: Node, loraB: Node, loraAlpha: Float, rank: Int)
 
 }
 
