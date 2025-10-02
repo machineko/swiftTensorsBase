@@ -682,8 +682,15 @@ public extension Node {
 }
 
 public extension Node {
-    func groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = false, dataLayout: convDataLayout = .NCHW) -> Node {
-        return Node(op: .groupNorm2d(groups: groups, channels: channels, eps: eps, weights: weights, bias: bias, affine: affine, dataLayout: dataLayout), inputs: [self])
+    func groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool, dataLayout: convDataLayout = .NCHW) -> Node {
+        var inputs = [self]
+        if let weights = weights {
+            inputs.append(weights)
+        }
+        if let bias = bias {
+            inputs.append(bias)
+        }
+        return Node(op: .groupNorm2d(groups: groups, channels: channels, eps: eps, weights: weights, bias: bias, affine: affine, dataLayout: dataLayout), inputs: inputs)
     }
 }
 
@@ -774,6 +781,11 @@ public extension Node {
                 stateDict.registerParameter(name: params.weightName)
                 if params.useBias {
                     stateDict.registerParameter(name: params.biasName)
+                }
+            case .linear(let weights, let bias):
+                stateDict.registerParameter(name: weights.name!)
+                if let bias = bias {
+                    stateDict.registerParameter(name: bias.name!)
                 }
             case .conv2dEncrypted(let params, _):
                 stateDict.registerParameter(name: params.weightName)
