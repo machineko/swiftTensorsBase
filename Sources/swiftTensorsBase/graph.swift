@@ -179,6 +179,7 @@ public enum graphOp: Sendable {
     case arange(start: Int, end: Int, step: Int, dataType: dataType)
     case sliceDim(_ dim: Int, upTo: Node)
     case sliceStatic(from: [Int], upTo: [Int], stride: [Int])
+    case sliceStaticDim(_ dim: Int, start: Int, upTo: Int)
     case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
@@ -192,7 +193,7 @@ public enum graphOp: Sendable {
     case constPad(_ padding: [(Int, Int)], _ value: Float)
     case log, exp
     case reduceMaximum(_ dim: Int)
-    
+    case shapeOf(of: Node)
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
     
     case conv2d(Conv2DParams)
@@ -625,11 +626,18 @@ public extension Node {
     func sliceDim(dim: Int, length: Node) -> Node {
         return Node(op: .sliceDim(dim, upTo: length), inputs: [self, length])
     }
+    func sliceDimStatic(dim: Int, start: Int, upTo: Int) -> Node {
+        return Node(op: .sliceStaticDim(dim, start: start, upTo: upTo), inputs: [self])
+    }
     
     func sliceStatic(_ from: [Int], upTo: [Int], stride: [Int]) -> Node {
         let fromCount = from.count
         precondition(fromCount == upTo.count && fromCount == stride.count, "Shape of from, upTo and stride need to be the same")
         return Node(op: .sliceStatic(from: from, upTo: upTo, stride: stride), inputs: [self])
+    }
+    
+    func shapeNode() -> Node {
+        return Node(op: .shapeOf(of: self), inputs: [self])
     }
 
     func gather(indexTensor: Node, dim: Int) -> Node {
