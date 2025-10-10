@@ -103,7 +103,7 @@ extension Tensor {
         precondition(node.isPlaceholder, "Node need to be placehodler \(node.op)")
         self.id = UUID()
         self.name = node.name
-        self.shape = node.shape!
+        self.shape = node.shape
         self.backend = backend
         self.dataType = node.dataType!
         self.storage = nil
@@ -280,17 +280,8 @@ extension Node {
         }
     }
 
-    public var shape: [Int]? {
-        switch self.op {
-        case .placeholder(_, let shape, _):
-            return shape
-        case .constant(_, let shape, _):
-            return shape
-        case .variable(_, let shape, _):
-            return shape
-        default:
-            return nil
-        }
+    public var shape: [Int] {
+        return inferShape()
     }
 
     public var dataType: dataType? {
@@ -306,6 +297,485 @@ extension Node {
         default:
             return nil
         }
+    }
+    
+    private func inferShape() -> [Int] {
+        switch self.op {
+        // Base cases with explicit shapes
+        case .placeholder(_, let shape, _):
+            return shape
+        case .constant(_, let shape, _):
+            return shape
+        case .variable(_, let shape, _):
+            return shape
+        case .constantScalar(_, let shape, _):
+            return shape
+        case .arange(let start, let end, let step, _):
+            let count = (end - start + step - 1) / step
+            return [count]
+            
+        // Element-wise operations (preserve shape)
+        case .add, .subtract, .mul, .division:
+            guard inputs.count == 2 else { return [] }
+            return broadcastShapes(inputs[0].shape, inputs[1].shape)
+            
+        case .relu, .tanh, .gelu, .sigmoid, .silu, .sin, .cos:
+            return inputs.first?.shape ?? []
+        case .leakyRelu:
+            return inputs.first?.shape ?? []
+        case .rsqrt, .sqrt, .log, .exp:
+            return inputs.first?.shape ?? []
+        case .power:
+            return inputs.first?.shape ?? []
+            
+        // Shape-changing operations
+        case .matmul, .matMul:
+            return inferMatMulShape()
+        case .transpose(let dim1, let dim2):
+            return inferTransposeShape(dim1: dim1, dim2: dim2)
+        case .permute(let dims):
+            return inferPermuteShape(dims: dims)
+        case .reshape(let shape):
+            return shape
+        case .reshapeWith(let shapeNode):
+            return shapeNode.shape
+        case .expandDim(let dim):
+            return inferExpandDimShape(dim: dim)
+        case .squeeze(let dim):
+            return inferSqueezeShape(dim: dim)
+            
+        // Reduction operations
+        case .softmax(_):
+            return inputs.first?.shape ?? []
+        case .mean(let dim), .sum(let dim), .reduceMaximum(let dim):
+            return inferReductionShape(dim: dim)
+        case .argMax(let dim):
+            return inferReductionShape(dim: dim)
+            
+        // Concatenation operations
+        case .cat(let dim):
+            return inferCatShape(dim: dim)
+        case .catWith(_, let dim):
+            return inferCatWithShape(dim: dim)
+            
+        // Split operations
+        case .split(let numSplits, let dim):
+            return inferSplitShape(numSplits: numSplits, dim: dim)
+        case .splitOutput(let parentId, let index):
+            return inferSplitOutputShape(parentId: parentId, index: index)
+            
+        // Slicing operations
+        case .sliceDim(let dim, let upToNode):
+            return inferSliceDimShape(dim: dim, upTo: upToNode)
+        case .sliceStaticDim(let dim, let start, let upTo):
+            return inferSliceStaticDimShape(dim: dim, start: start, upTo: upTo)
+        case .sliceStatic(let from, let upTo, let stride):
+            return inferSliceStaticShape(from: from, upTo: upTo, stride: stride)
+            
+        // Conv operations
+        case .conv2d(let params):
+            return inferConv2DShape(params: params)
+        case .conv2dEncrypted(let params, _):
+            return inferConv2DShape(params: params)
+            
+        // Other operations
+        case .linear(let weights, _):
+            return inferLinearShape(weights: weights)
+        case .linearLora(let weights, _, _, _, _, _):
+            return inferLinearShape(weights: weights)
+        case .gather(let dim):
+            return inferGatherShape(dim: dim)
+        case .clamp:
+            return inputs.first?.shape ?? []
+        case .tile(let dims):
+            return inferTileShape(dims: dims)
+        case .interpolateNearest(let scaleFactor, let dataLayout):
+            return inferInterpolateShape(scaleFactor: scaleFactor, dataLayout: dataLayout)
+        case .pixelShuffle(let scale, let dataLayout):
+            return inferPixelShuffleShape(scale: scale, dataLayout: dataLayout)
+        case .pixelUnshuffle(let scale, let dataLayout):
+            return inferPixelUnshuffleShape(scale: scale, dataLayout: dataLayout)
+        case .constPad(let padding, _):
+            return inferPadShape(padding: padding)
+        case .tril, .triu:
+            return inputs.first?.shape ?? []
+        case .scaledDotProductAttention(_, _, let value, _, _):
+            return value.shape
+        case .groupNorm2d:
+            return inputs.first?.shape ?? []
+        case .to:
+            return inputs.first?.shape ?? []
+        case .quantize, .dequantize, .dynamicQuantize:
+            return inputs.first?.shape ?? []
+        case .quantizePerChannel, .dequantizePerChannel:
+            return inputs.first?.shape ?? []
+        case .shapeOf(let ofNode):
+            let inputShape = ofNode.shape
+            return [inputShape.count]
+        }
+    }
+    
+    // MARK: - Shape Inference Helpers
+    
+    private func broadcastShapes(_ shape1: [Int], _ shape2: [Int]) -> [Int] {
+        let maxLen = max(shape1.count, shape2.count)
+        var result = [Int]()
+        
+        for i in 0..<maxLen {
+            let idx1 = shape1.count - maxLen + i
+            let idx2 = shape2.count - maxLen + i
+            
+            let dim1 = (idx1 >= 0 && idx1 < shape1.count) ? shape1[idx1] : 1
+            let dim2 = (idx2 >= 0 && idx2 < shape2.count) ? shape2[idx2] : 1
+            
+            if dim1 == -1 || dim2 == -1 {
+                result.append(-1)  // Dynamic dimension propagates
+            } else if dim1 == dim2 || dim1 == 1 {
+                result.append(dim2)
+            } else if dim2 == 1 {
+                result.append(dim1)
+            } else {
+                result.append(max(dim1, dim2))
+            }
+        }
+        return result
+    }
+    
+    private func inferMatMulShape() -> [Int] {
+        guard inputs.count >= 2 else { return [] }
+        let lhs = inputs[0].shape
+        let rhs = inputs[1].shape
+        
+        guard lhs.count >= 2, rhs.count >= 2 else { return [] }
+        
+        var result = [Int]()
+        // Handle batch dimensions
+        let maxBatch = max(lhs.count - 2, rhs.count - 2)
+        for i in 0..<maxBatch {
+            let lhsIdx = i < lhs.count - 2 ? lhs[i] : 1
+            let rhsIdx = i < rhs.count - 2 ? rhs[i] : 1
+            if lhsIdx == -1 || rhsIdx == -1 {
+                result.append(-1)
+            } else {
+                result.append(max(lhsIdx, rhsIdx))
+            }
+        }
+        
+        // Add matrix dimensions: [M, K] x [K, N] = [M, N]
+        let m = lhs[lhs.count - 2]
+        let n = rhs[rhs.count - 1]
+        result.append(m)
+        result.append(n)
+        return result
+    }
+    
+    private func inferTransposeShape(dim1: Int, dim2: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim1 < shape.count && dim2 < shape.count {
+            shape.swapAt(dim1, dim2)
+        }
+        return shape
+    }
+    
+    private func inferPermuteShape(dims: [Int]) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        return dims.map { $0 < inputShape.count ? inputShape[$0] : 1 }
+    }
+    
+    private func inferExpandDimShape(dim: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        let insertIdx = dim < 0 ? shape.count + dim + 1 : dim
+        if insertIdx >= 0 && insertIdx <= shape.count {
+            shape.insert(1, at: insertIdx)
+        }
+        return shape
+    }
+    
+    private func inferSqueezeShape(dim: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim >= 0 && dim < shape.count && shape[dim] == 1 {
+            shape.remove(at: dim)
+        }
+        return shape
+    }
+    
+    private func inferReductionShape(dim: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim >= 0 && dim < shape.count {
+            shape[dim] = 1
+        }
+        return shape
+    }
+    
+    private func inferCatShape(dim: Int) -> [Int] {
+        guard !inputs.isEmpty else { return [] }
+        var result = inputs[0].shape
+        if dim < result.count {
+            let catDim = inputs.dropFirst().reduce(result[dim]) { sum, node in
+                let nodeShape = node.shape
+                if dim < nodeShape.count {
+                    if sum == -1 || nodeShape[dim] == -1 {
+                        return -1  // Dynamic dimension
+                    }
+                    return sum + nodeShape[dim]
+                }
+                return sum
+            }
+            result[dim] = catDim
+        }
+        return result
+    }
+    
+    private func inferCatWithShape(dim: Int) -> [Int] {
+        guard inputs.count >= 2 else { return [] }
+        let shape1 = inputs[0].shape
+        let shape2 = inputs[1].shape
+        var result = shape1
+        if dim < result.count && dim < shape2.count {
+            if result[dim] == -1 || shape2[dim] == -1 {
+                result[dim] = -1
+            } else {
+                result[dim] = shape1[dim] + shape2[dim]
+            }
+        }
+        return result
+    }
+    
+    private func inferSplitShape(numSplits: Int, dim: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim < shape.count {
+            if shape[dim] == -1 {
+                shape[dim] = -1  // Keep dynamic
+            } else {
+                shape[dim] = shape[dim] / numSplits
+            }
+        }
+        return shape
+    }
+    
+    private func inferSplitOutputShape(parentId: UUID, index: Int) -> [Int] {
+        // The split output shape is same as the split operation shape
+        guard let parent = inputs.first else { return [] }
+        return parent.shape
+    }
+    
+    private func inferSliceDimShape(dim: Int, upTo: Node) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim < shape.count {
+            // Dynamic slice - mark as dynamic
+            shape[dim] = -1
+        }
+        return shape
+    }
+    
+    private func inferSliceStaticDimShape(dim: Int, start: Int, upTo: Int) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dim < shape.count {
+            shape[dim] = upTo - start
+        }
+        return shape
+    }
+    
+    private func inferSliceStaticShape(from: [Int], upTo: [Int], stride: [Int]) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        var result = [Int]()
+        for i in 0..<inputShape.count {
+            if i < from.count && i < upTo.count && i < stride.count {
+                // Static slice with explicit bounds always produces static size
+                let size = (upTo[i] - from[i] + stride[i] - 1) / stride[i]
+                result.append(size)
+            } else {
+                // Dimension not being sliced, preserve original shape (including -1)
+                result.append(inputShape[i])
+            }
+        }
+        return result
+    }
+    
+    private func inferConv2DShape(params: Conv2DParams) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        
+        if params.dataLayout == .NCHW {
+            guard inputShape.count == 4 else { return [] }
+            let batch = inputShape[0]
+            let outChannels = params.outChannels
+            let h = inputShape[2]
+            let w = inputShape[3]
+            
+            let outH: Int
+            let outW: Int
+            
+            // Handle height dimension independently
+            if h == -1 {
+                outH = -1
+            } else {
+                switch params.padStyle {
+                case .explicit:
+                    outH = (h + 2 * params.padding.0 - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
+                case .same:
+                    outH = (h + params.stride.0 - 1) / params.stride.0
+                case .valid:
+                    outH = (h - params.kernelSize.0) / params.stride.0 + 1
+                }
+            }
+            
+            // Handle width dimension independently
+            if w == -1 {
+                outW = -1
+            } else {
+                switch params.padStyle {
+                case .explicit:
+                    outW = (w + 2 * params.padding.1 - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
+                case .same:
+                    outW = (w + params.stride.1 - 1) / params.stride.1
+                case .valid:
+                    outW = (w - params.kernelSize.1) / params.stride.1 + 1
+                }
+            }
+            return [batch, outChannels, outH, outW]
+        } else { // NHWC
+            guard inputShape.count == 4 else { return [] }
+            let batch = inputShape[0]
+            let h = inputShape[1]
+            let w = inputShape[2]
+            let outChannels = params.outChannels
+            
+            let outH: Int
+            let outW: Int
+            
+            // Handle height dimension independently
+            if h == -1 {
+                outH = -1
+            } else {
+                switch params.padStyle {
+                case .explicit:
+                    outH = (h + 2 * params.padding.0 - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
+                case .same:
+                    outH = (h + params.stride.0 - 1) / params.stride.0
+                case .valid:
+                    outH = (h - params.kernelSize.0) / params.stride.0 + 1
+                }
+            }
+            
+            // Handle width dimension independently
+            if w == -1 {
+                outW = -1
+            } else {
+                switch params.padStyle {
+                case .explicit:
+                    outW = (w + 2 * params.padding.1 - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
+                case .same:
+                    outW = (w + params.stride.1 - 1) / params.stride.1
+                case .valid:
+                    outW = (w - params.kernelSize.1) / params.stride.1 + 1
+                }
+            }
+            return [batch, outH, outW, outChannels]
+        }
+    }
+    
+    private func inferLinearShape(weights: Node) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        let weightShape = weights.shape
+        
+        guard weightShape.count >= 2 else { return inputShape }
+        
+        // Linear: input [..., in_features] @ weights [in_features, out_features] = [..., out_features]
+        var result = inputShape
+        result[result.count - 1] = weightShape[weightShape.count - 1]  // out_features (last dim)
+        return result
+    }
+    
+    private func inferGatherShape(dim: Int) -> [Int] {
+        guard inputs.count >= 2 else { return [] }
+        let inputShape = inputs[0].shape
+        let indexShape = inputs[1].shape
+        
+        var result = inputShape
+        if dim < result.count && !indexShape.isEmpty {
+            result[dim] = indexShape[0]
+        }
+        return result
+    }
+    
+    private func inferTileShape(dims: [Int]) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        return zip(inputShape, dims).map { shape, multiplier in
+            if shape == -1 {
+                return -1
+            }
+            return shape * multiplier
+        }
+    }
+    
+    private func inferInterpolateShape(scaleFactor: Int, dataLayout: convDataLayout) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dataLayout == .NCHW && shape.count == 4 {
+            shape[2] = shape[2] == -1 ? -1 : shape[2] * scaleFactor
+            shape[3] = shape[3] == -1 ? -1 : shape[3] * scaleFactor
+        } else if dataLayout == .NHWC && shape.count == 4 {
+            shape[1] = shape[1] == -1 ? -1 : shape[1] * scaleFactor
+            shape[2] = shape[2] == -1 ? -1 : shape[2] * scaleFactor
+        }
+        return shape
+    }
+    
+    private func inferPixelShuffleShape(scale: Int, dataLayout: convDataLayout) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dataLayout == .NCHW && shape.count == 4 {
+            shape[1] = shape[1] == -1 ? -1 : shape[1] / (scale * scale)
+            shape[2] = shape[2] == -1 ? -1 : shape[2] * scale
+            shape[3] = shape[3] == -1 ? -1 : shape[3] * scale
+        } else if dataLayout == .NHWC && shape.count == 4 {
+            shape[1] = shape[1] == -1 ? -1 : shape[1] * scale
+            shape[2] = shape[2] == -1 ? -1 : shape[2] * scale
+            shape[3] = shape[3] == -1 ? -1 : shape[3] / (scale * scale)
+        }
+        return shape
+    }
+    
+    private func inferPixelUnshuffleShape(scale: Int, dataLayout: convDataLayout) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        if dataLayout == .NCHW && shape.count == 4 {
+            shape[1] = shape[1] == -1 ? -1 : shape[1] * (scale * scale)
+            shape[2] = shape[2] == -1 ? -1 : shape[2] / scale
+            shape[3] = shape[3] == -1 ? -1 : shape[3] / scale
+        } else if dataLayout == .NHWC && shape.count == 4 {
+            shape[1] = shape[1] == -1 ? -1 : shape[1] / scale
+            shape[2] = shape[2] == -1 ? -1 : shape[2] / scale
+            shape[3] = shape[3] == -1 ? -1 : shape[3] * (scale * scale)
+        }
+        return shape
+    }
+    
+    private func inferPadShape(padding: [(Int, Int)]) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        var shape = input.shape
+        for (i, pad) in padding.enumerated() {
+            if i < shape.count {
+                if shape[i] == -1 {
+                    shape[i] = -1
+                } else {
+                    shape[i] = shape[i] + pad.0 + pad.1
+                }
+            }
+        }
+        return shape
     }
 
 }
@@ -548,7 +1018,7 @@ public extension Node {
     }
     
     func reshapeWith(withShape: Node) -> Node {
-        return Node(op: .reshapeWith(withShape: withShape), inputs: [self])
+        return Node(op: .reshapeWith(withShape: withShape), inputs: [self, withShape])
     }
 
     func matMul(_ with: Node) -> Node {
