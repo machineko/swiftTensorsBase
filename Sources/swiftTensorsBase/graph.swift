@@ -245,6 +245,25 @@ public struct Conv2DParams: Sendable {
     }
 }
 
+public extension Conv2DParams {
+    public init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int), padStyle: padStyle = .explicit , dilation: (Int, Int) = (1, 1), groups: Int = 1, useBias: Bool = true, dataLayout: convDataLayout = .NCHW, dataType: dataType, name: String) {
+        self.inChannels = inChannels
+        self.outChannels = outChannels
+        self.kernelSize = kernelSize
+        self.stride = stride
+        self.padding = padding
+        self.padStyle = padStyle
+        self.dilation = dilation
+        self.groups = groups
+        self.useBias = useBias
+        self.dataLayout = dataLayout
+        self.dataType = dataType
+        self.name = name
+        self.encryptionParams = nil
+    }
+
+}
+
 public struct attentionParams: Sendable, Codable {
     public let numHeads: Int
     public let headDim: Int
