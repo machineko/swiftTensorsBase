@@ -436,6 +436,15 @@ extension Node {
     
     // MARK: - Shape Inference Helpers
     
+    /// Normalizes a dimension index to handle negative indices
+    /// -1 refers to the last dimension, -2 to second-to-last, etc.
+    private func normalizeDim(_ dim: Int, for shape: [Int]) -> Int {
+        if dim >= 0 {
+            return dim
+        }
+        return shape.count + dim
+    }
+    
     private func broadcastShapes(_ shape1: [Int], _ shape2: [Int]) -> [Int] {
         let maxLen = max(shape1.count, shape2.count)
         var result = [Int]()
@@ -491,8 +500,10 @@ extension Node {
     private func inferTransposeShape(dim1: Int, dim2: Int) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim1 < shape.count && dim2 < shape.count {
-            shape.swapAt(dim1, dim2)
+        let normalizedDim1 = normalizeDim(dim1, for: shape)
+        let normalizedDim2 = normalizeDim(dim2, for: shape)
+        if normalizedDim1 >= 0 && normalizedDim1 < shape.count && normalizedDim2 >= 0 && normalizedDim2 < shape.count {
+            shape.swapAt(normalizedDim1, normalizedDim2)
         }
         return shape
     }
@@ -516,8 +527,9 @@ extension Node {
     private func inferSqueezeShape(dim: Int) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim >= 0 && dim < shape.count && shape[dim] == 1 {
-            shape.remove(at: dim)
+        let normalizedDim = normalizeDim(dim, for: shape)
+        if normalizedDim >= 0 && normalizedDim < shape.count && shape[normalizedDim] == 1 {
+            shape.remove(at: normalizedDim)
         }
         return shape
     }
@@ -525,8 +537,9 @@ extension Node {
     private func inferReductionShape(dim: Int) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim >= 0 && dim < shape.count {
-            shape[dim] = 1
+        let normalizedDim = normalizeDim(dim, for: shape)
+        if normalizedDim >= 0 && normalizedDim < shape.count {
+            shape[normalizedDim] = 1
         }
         return shape
     }
@@ -534,18 +547,20 @@ extension Node {
     private func inferCatShape(dim: Int) -> [Int] {
         guard !inputs.isEmpty else { return [] }
         var result = inputs[0].shape
-        if dim < result.count {
-            let catDim = inputs.dropFirst().reduce(result[dim]) { sum, node in
+        let normalizedDim = normalizeDim(dim, for: result)
+        if normalizedDim >= 0 && normalizedDim < result.count {
+            let catDim = inputs.dropFirst().reduce(result[normalizedDim]) { sum, node in
                 let nodeShape = node.shape
-                if dim < nodeShape.count {
-                    if sum == -1 || nodeShape[dim] == -1 {
+                let nodeDim = normalizeDim(dim, for: nodeShape)
+                if nodeDim >= 0 && nodeDim < nodeShape.count {
+                    if sum == -1 || nodeShape[nodeDim] == -1 {
                         return -1  // Dynamic dimension
                     }
-                    return sum + nodeShape[dim]
+                    return sum + nodeShape[nodeDim]
                 }
                 return sum
             }
-            result[dim] = catDim
+            result[normalizedDim] = catDim
         }
         return result
     }
@@ -555,11 +570,13 @@ extension Node {
         let shape1 = inputs[0].shape
         let shape2 = inputs[1].shape
         var result = shape1
-        if dim < result.count && dim < shape2.count {
-            if result[dim] == -1 || shape2[dim] == -1 {
-                result[dim] = -1
+        let normalizedDim1 = normalizeDim(dim, for: shape1)
+        let normalizedDim2 = normalizeDim(dim, for: shape2)
+        if normalizedDim1 >= 0 && normalizedDim1 < result.count && normalizedDim2 >= 0 && normalizedDim2 < shape2.count {
+            if result[normalizedDim1] == -1 || shape2[normalizedDim2] == -1 {
+                result[normalizedDim1] = -1
             } else {
-                result[dim] = shape1[dim] + shape2[dim]
+                result[normalizedDim1] = shape1[normalizedDim1] + shape2[normalizedDim2]
             }
         }
         return result
@@ -568,11 +585,12 @@ extension Node {
     private func inferSplitShape(numSplits: Int, dim: Int) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim < shape.count {
-            if shape[dim] == -1 {
-                shape[dim] = -1  // Keep dynamic
+        let normalizedDim = normalizeDim(dim, for: shape)
+        if normalizedDim >= 0 && normalizedDim < shape.count {
+            if shape[normalizedDim] == -1 {
+                shape[normalizedDim] = -1  // Keep dynamic
             } else {
-                shape[dim] = shape[dim] / numSplits
+                shape[normalizedDim] = shape[normalizedDim] / numSplits
             }
         }
         return shape
@@ -587,9 +605,10 @@ extension Node {
     private func inferSliceDimShape(dim: Int, upTo: Node) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim < shape.count {
+        let normalizedDim = normalizeDim(dim, for: shape)
+        if normalizedDim >= 0 && normalizedDim < shape.count {
             // Dynamic slice - mark as dynamic
-            shape[dim] = -1
+            shape[normalizedDim] = -1
         }
         return shape
     }
@@ -597,8 +616,9 @@ extension Node {
     private func inferSliceStaticDimShape(dim: Int, start: Int, upTo: Int) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
-        if dim < shape.count {
-            shape[dim] = upTo - start
+        let normalizedDim = normalizeDim(dim, for: shape)
+        if normalizedDim >= 0 && normalizedDim < shape.count {
+            shape[normalizedDim] = upTo - start
         }
         return shape
     }
@@ -722,8 +742,9 @@ extension Node {
         let indexShape = inputs[1].shape
         
         var result = inputShape
-        if dim < result.count && !indexShape.isEmpty {
-            result[dim] = indexShape[0]
+        let normalizedDim = normalizeDim(dim, for: result)
+        if normalizedDim >= 0 && normalizedDim < result.count && !indexShape.isEmpty {
+            result[normalizedDim] = indexShape[0]
         }
         return result
     }
