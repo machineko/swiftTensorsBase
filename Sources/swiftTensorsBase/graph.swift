@@ -191,7 +191,7 @@ public enum graphOp: Sendable {
     case power(_ exponent: Float)
     case squeeze(_ dim: Int)
     case constPad(_ padding: [(Int, Int)], _ value: Float)
-    case log, exp
+    case log, exp, exp2
     case reduceMaximum(_ dim: Int)
     case shapeOf(of: Node)
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
@@ -342,7 +342,7 @@ extension Node {
             return inputs.first?.shape ?? []
         case .leakyRelu:
             return inputs.first?.shape ?? []
-        case .rsqrt, .sqrt, .log, .exp:
+        case .rsqrt, .sqrt, .log, .exp, .exp2:
             return inputs.first?.shape ?? []
         case .power:
             return inputs.first?.shape ?? []
@@ -1186,6 +1186,10 @@ public extension Node {
         return Node(op: .exp, inputs: [self])
     }
     
+    func exp2() -> Node {
+        return Node(op: .exp2, inputs: [self])
+    }
+    
     func sin() -> Node {
         return Node(op: .sin, inputs: [self])
     }
@@ -1316,7 +1320,56 @@ public extension Node {
         }
         return stateDict
     }
+    
+    static func emptyGraphStateDict<T>(from nodes: [Node]) throws -> StateDict<T> {
+        var stateDict = StateDict<T>()
+        
+        var allNodes: [Node] = []
+        var visitedIds = Set<UUID>()
+        
+        for node in nodes {
+            let orderedNodes = node.generateTopologicalOrder()
+            for orderedNode in orderedNodes {
+                if !visitedIds.contains(orderedNode.id) {
+                    visitedIds.insert(orderedNode.id)
+                    allNodes.append(orderedNode)
+                }
+            }
+        }
+        
+        for node in allNodes {
+            switch node.op {
+            case .variable(let name, _, _):
+                stateDict.registerParameter(name: name)
+            case .constant(let name, _, _):
+                stateDict.registerParameter(name: name)
+            case .conv2d(let params):
+                stateDict.registerParameter(name: params.weightName)
+                if params.useBias {
+                    stateDict.registerParameter(name: params.biasName)
+                }
+            case .linear(let weights, let bias):
+                stateDict.registerParameter(name: weights.name!)
+                if let bias = bias {
+                    stateDict.registerParameter(name: bias.name!)
+                }
+            case .conv2dEncrypted(let params, _):
+                stateDict.registerParameter(name: params.weightName)
+                if params.useBias {
+                    stateDict.registerParameter(name: params.biasName)
+                }
+            default:
+                continue
+            }
+        }
+        return stateDict
+    }
+    
+    static func emptyGraphStateDict<T>(from nodes: Node...) throws -> StateDict<T> {
+        return try emptyGraphStateDict(from: nodes)
+    }
 }
+
 
 extension Node {
     public var isPlaceholder: Bool {
