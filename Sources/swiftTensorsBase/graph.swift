@@ -215,7 +215,7 @@ public struct Conv2DParams: Sendable {
     public var outChannels: Int
     public var kernelSize: (Int, Int)
     public var stride: (Int, Int)
-    public var padding: (Int, Int)
+    public var padding: (Int, Int, Int, Int)  // (left, right, top, bottom) - PyTorch convention
     public var padStyle: padStyle
     public var dilation: (Int, Int)
     public var groups: Int
@@ -228,7 +228,8 @@ public struct Conv2DParams: Sendable {
     public var weightName: String { "\(name).weight" }
     public var biasName: String { "\(name).bias" }
     
-    public init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int), padStyle: padStyle, dilation: (Int, Int), groups: Int, useBias: Bool, dataLayout: convDataLayout, dataType: dataType, name: String, encryptionParams: EncryptionInfo? = nil) {
+    // Main initializer with explicit 4-value padding
+    public init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int, Int, Int), padStyle: padStyle, dilation: (Int, Int), groups: Int, useBias: Bool, dataLayout: convDataLayout, dataType: dataType, name: String, encryptionParams: EncryptionInfo? = nil) {
         self.inChannels = inChannels
         self.outChannels = outChannels
         self.kernelSize = kernelSize
@@ -246,22 +247,24 @@ public struct Conv2DParams: Sendable {
 }
 
 public extension Conv2DParams {
-    public init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int), padStyle: padStyle = .explicit , dilation: (Int, Int) = (1, 1), groups: Int = 1, useBias: Bool = true, dataLayout: convDataLayout = .NCHW, dataType: dataType, name: String) {
-        self.inChannels = inChannels
-        self.outChannels = outChannels
-        self.kernelSize = kernelSize
-        self.stride = stride
-        self.padding = padding
-        self.padStyle = padStyle
-        self.dilation = dilation
-        self.groups = groups
-        self.useBias = useBias
-        self.dataLayout = dataLayout
-        self.dataType = dataType
-        self.name = name
-        self.encryptionParams = nil
+    // Convenience initializer with symmetric 2-value padding (expands to 4-value)
+    init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), stride: (Int, Int), padding: (Int, Int), padStyle: padStyle = .explicit, dilation: (Int, Int) = (1, 1), groups: Int = 1, useBias: Bool = true, dataLayout: convDataLayout = .NCHW, dataType: dataType, name: String, encryptionParams: EncryptionInfo? = nil) {
+        self.init(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: stride,
+            padding: (padding.1, padding.1, padding.0, padding.0),  // Expand (pad_h, pad_w) -> (left, right, top, bottom)
+            padStyle: padStyle,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: name,
+            encryptionParams: encryptionParams
+        )
     }
-
 }
 
 public struct attentionParams: Sendable, Codable {
@@ -644,6 +647,11 @@ extension Node {
         guard let input = inputs.first else { return [] }
         let inputShape = input.shape
         
+        // Extract padding: (left, right, top, bottom) - PyTorch convention
+        let (padLeft, padRight, padTop, padBottom) = params.padding
+        let totalHeightPad = padTop + padBottom
+        let totalWidthPad = padLeft + padRight
+        
         if params.dataLayout == .NCHW {
             guard inputShape.count == 4 else { return [] }
             let batch = inputShape[0]
@@ -660,7 +668,7 @@ extension Node {
             } else {
                 switch params.padStyle {
                 case .explicit:
-                    outH = (h + 2 * params.padding.0 - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
+                    outH = (h + totalHeightPad - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
                 case .same:
                     outH = (h + params.stride.0 - 1) / params.stride.0
                 case .valid:
@@ -674,7 +682,7 @@ extension Node {
             } else {
                 switch params.padStyle {
                 case .explicit:
-                    outW = (w + 2 * params.padding.1 - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
+                    outW = (w + totalWidthPad - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
                 case .same:
                     outW = (w + params.stride.1 - 1) / params.stride.1
                 case .valid:
@@ -698,7 +706,7 @@ extension Node {
             } else {
                 switch params.padStyle {
                 case .explicit:
-                    outH = (h + 2 * params.padding.0 - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
+                    outH = (h + totalHeightPad - params.dilation.0 * (params.kernelSize.0 - 1) - 1) / params.stride.0 + 1
                 case .same:
                     outH = (h + params.stride.0 - 1) / params.stride.0
                 case .valid:
@@ -712,7 +720,7 @@ extension Node {
             } else {
                 switch params.padStyle {
                 case .explicit:
-                    outW = (w + 2 * params.padding.1 - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
+                    outW = (w + totalWidthPad - params.dilation.1 * (params.kernelSize.1 - 1) - 1) / params.stride.1 + 1
                 case .same:
                     outW = (w + params.stride.1 - 1) / params.stride.1
                 case .valid:
