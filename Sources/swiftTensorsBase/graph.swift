@@ -195,7 +195,7 @@ public enum graphOp: Sendable {
     case reduceMaximum(_ dim: Int)
     case shapeOf(of: Node)
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
-    
+    case randomUniform(shape: [Int], seed: Int, dataType: dataType)
     case conv2d(Conv2DParams)
     
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
@@ -407,7 +407,9 @@ extension Node {
         case .gather:
             return inputs.first?.dataType ?? .float32
         case .argMax:
-            return .int64  // ArgMax returns indices as int64
+            return .int64
+        case .randomUniform(shape: let shape, seed: let seed, let dataType):
+            return dataType
         }
     }
     
@@ -560,6 +562,8 @@ extension Node {
         case .shapeOf(let ofNode):
             let inputShape = ofNode.shape
             return [inputShape.count]
+        case .randomUniform(shape: let shape, seed: let seed, _):
+            return shape
         }
     }
     
@@ -1155,6 +1159,10 @@ public extension Node {
     static func cat(_ tensors: [Node], dim: Int) -> Node {
         return Node(op: .cat(dim), inputs: tensors)
     }
+    
+    static func randomUniform(_ shape: [Int], seed: Int = 0, dataType: dataType = .float32) -> Node {
+        return Node(op: .randomUniform(shape: shape, seed: seed, dataType: dataType))
+    }
 
 }
 public extension Node {
@@ -1335,6 +1343,8 @@ public extension Node {
     func reduceMaximum(dim: Int) -> Node {
         return Node(op: .reduceMaximum(dim), inputs: [self])
     }
+    
+
 }
 
 public extension Node {
