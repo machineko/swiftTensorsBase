@@ -105,7 +105,7 @@ extension Tensor {
         self.name = node.name
         self.shape = node.shape
         self.backend = backend
-        self.dataType = node.dataType!
+        self.dataType = node.dataType
         self.storage = nil
     }
 
@@ -306,19 +306,145 @@ extension Node {
         return inferShape()
     }
 
-    public var dataType: dataType? {
+    public var dataType: dataType {
+        return inferDataType()
+    }
+    
+    private func inferDataType() -> dataType {
         switch self.op {
+        // Base cases with explicit dataTypes
         case .placeholder(_, _, let dataType):
             return dataType
         case .constant(_, _, let dataType):
             return dataType
         case .variable(_, _, let dataType):
             return dataType
+        case .constantScalar(_, _, let dataType):
+            return dataType
+        case .arange(_, _, _, let dataType):
+            return dataType
         case .conv2d(let params):
             return params.dataType
-        default:
-            return nil
+        case .conv2dEncrypted(let params, _):
+            return params.dataType
+            
+        // Type casting operations
+        case .to(let targetType):
+            return targetType
+        case .quantize(_, _, let targetType):
+            return targetType
+        case .dequantize(_, _, let targetType):
+            // After dequantization, we get the target float type
+            return targetType
+        case .dynamicQuantize(let targetType):
+            return targetType
+        case .quantizePerChannel(_, _, _, let targetType):
+            return targetType
+        case .dequantizePerChannel(_, _, _, let targetType):
+            return targetType
+            
+        // Operations that preserve input dataType
+        case .relu, .tanh, .gelu, .sigmoid, .silu, .sin, .cos:
+            return inputs.first?.dataType ?? .float32
+        case .leakyRelu:
+            return inputs.first?.dataType ?? .float32
+        case .rsqrt, .sqrt, .log, .exp, .exp2:
+            return inputs.first?.dataType ?? .float32
+        case .power:
+            return inputs.first?.dataType ?? .float32
+        case .softmax:
+            return inputs.first?.dataType ?? .float32
+        case .transpose, .permute:
+            return inputs.first?.dataType ?? .float32
+        case .reshape, .reshapeWith:
+            return inputs.first?.dataType ?? .float32
+        case .expandDim, .squeeze:
+            return inputs.first?.dataType ?? .float32
+        case .tile:
+            return inputs.first?.dataType ?? .float32
+        case .interpolateNearest, .pixelShuffle, .pixelUnshuffle:
+            return inputs.first?.dataType ?? .float32
+        case .constPad:
+            return inputs.first?.dataType ?? .float32
+        case .tril, .triu:
+            return inputs.first?.dataType ?? .float32
+        case .clamp:
+            return inputs.first?.dataType ?? .float32
+        case .mean, .sum, .reduceMaximum:
+            return inputs.first?.dataType ?? .float32
+        case .sliceDim, .sliceStaticDim, .sliceStatic:
+            return inputs.first?.dataType ?? .float32
+        case .groupNorm2d:
+            return inputs.first?.dataType ?? .float32
+        case .shapeOf:
+            return .int64  // Shape is always int64
+            
+        // Binary operations - assert matching types
+        case .add, .subtract, .mul, .division:
+            return inferBinaryOpDataType()
+        case .matmul, .matMul:
+            return inferBinaryOpDataType()
+            
+        // Concatenation and splitting preserve dataType
+        case .cat, .catWith:
+            return inferCatDataType()
+        case .split:
+            return inputs.first?.dataType ?? .float32
+        case .splitOutput:
+            return inputs.first?.dataType ?? .float32
+            
+        // Attention operations
+        case .scaledDotProductAttention(_, _, let value, _, _):
+            return value.dataType
+            
+        // Linear operations
+        case .linear(let weights, _):
+            return inferLinearDataType(weights: weights)
+        case .linearLora(let weights, _, _, _, _, _):
+            return inferLinearDataType(weights: weights)
+            
+        // Gather and indexing operations
+        case .gather:
+            return inputs.first?.dataType ?? .float32
+        case .argMax:
+            return .int64  // ArgMax returns indices as int64
         }
+    }
+    
+    private func inferBinaryOpDataType() -> dataType {
+        guard inputs.count >= 2 else { return .float32 }
+        let lhsType = inputs[0].dataType
+        let rhsType = inputs[1].dataType
+        
+        // Assert that types match
+        assert(lhsType == rhsType, "DataType mismatch in binary operation: \(lhsType) vs \(rhsType)")
+        
+        return lhsType
+    }
+    
+    private func inferCatDataType() -> dataType {
+        guard !inputs.isEmpty else { return .float32 }
+        let firstType = inputs[0].dataType
+        
+        // Assert all inputs have the same dataType
+        for (index, input) in inputs.enumerated() {
+            assert(input.dataType == firstType, 
+                   "DataType mismatch in concatenation at index \(index): expected \(firstType), got \(input.dataType)")
+        }
+        
+        return firstType
+    }
+    
+    private func inferLinearDataType(weights: Node) -> dataType {
+        guard let input = inputs.first else { return .float32 }
+        let inputType = input.dataType
+        let weightsType = weights.dataType
+        
+        // Assert that types match
+        assert(inputType == weightsType, 
+               "DataType mismatch in linear operation: input \(inputType) vs weights \(weightsType)")
+        
+        return inputType
     }
     
     private func inferShape() -> [Int] {
