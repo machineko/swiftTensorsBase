@@ -180,10 +180,9 @@ public enum graphOp: Sendable {
     case sliceDim(_ dim: Int, upTo: Node)
     case sliceStatic(from: [Int], upTo: [Int], stride: [Int])
     case sliceStaticDim(_ dim: Int, start: Int, upTo: Int)
-    case interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout)
+    case interpolateNearest(scaleFactor: Float, dataLayout: convDataLayout, alignCorners: Bool), interpolateBilinear(scaleFactor: Float, dataLayout: convDataLayout, alignCorners: Bool)
     case pixelShuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
     case pixelUnshuffle(_ scale: Int, dataLayout: convDataLayout = .NCHW)
-//    case multiHeadAttention(MultiHeadAttentionParams)
     case tril(diagonal: Int, value: Float = 0.0), triu(diagonal: Int, value: Float = 0.0)
     case scaledDotProductAttention(query: Node, key: Node, value: Node, attnMask: Node?, params: attentionParams)
     case gather(dim: Int)
@@ -382,7 +381,7 @@ extension Node {
             return inputs.first?.dataType ?? .float32
         case .tile:
             return inputs.first?.dataType ?? .float32
-        case .interpolateNearest, .pixelShuffle, .pixelUnshuffle:
+        case .interpolateNearest, .interpolateBilinear, .pixelShuffle, .pixelUnshuffle:
             return inputs.first?.dataType ?? .float32
         case .constPad:
             return inputs.first?.dataType ?? .float32
@@ -563,7 +562,9 @@ extension Node {
             return inputs.first?.shape ?? []
         case .tile(let dims):
             return inferTileShape(dims: dims)
-        case .interpolateNearest(let scaleFactor, let dataLayout):
+        case .interpolateNearest(let scaleFactor, let dataLayout, _):
+            return inferInterpolateShape(scaleFactor: scaleFactor, dataLayout: dataLayout)
+        case .interpolateBilinear(let scaleFactor, let dataLayout, _):
             return inferInterpolateShape(scaleFactor: scaleFactor, dataLayout: dataLayout)
         case .pixelShuffle(let scale, let dataLayout):
             return inferPixelShuffleShape(scale: scale, dataLayout: dataLayout)
@@ -1016,15 +1017,15 @@ extension Node {
         }
     }
     
-    private func inferInterpolateShape(scaleFactor: Int, dataLayout: convDataLayout) -> [Int] {
+    private func inferInterpolateShape(scaleFactor: Float, dataLayout: convDataLayout) -> [Int] {
         guard let input = inputs.first else { return [] }
         var shape = input.shape
         if dataLayout == .NCHW && shape.count == 4 {
-            shape[2] = shape[2] == -1 ? -1 : shape[2] * scaleFactor
-            shape[3] = shape[3] == -1 ? -1 : shape[3] * scaleFactor
+            shape[2] = shape[2] == -1 ? -1 : Int(Float(shape[2]) * scaleFactor)
+            shape[3] = shape[3] == -1 ? -1 : Int(Float(shape[3]) * scaleFactor)
         } else if dataLayout == .NHWC && shape.count == 4 {
-            shape[1] = shape[1] == -1 ? -1 : shape[1] * scaleFactor
-            shape[2] = shape[2] == -1 ? -1 : shape[2] * scaleFactor
+            shape[1] = shape[1] == -1 ? -1 : Int(Float(shape[1]) * scaleFactor)
+            shape[2] = shape[2] == -1 ? -1 : Int(Float(shape[2]) * scaleFactor)
         }
         return shape
     }
@@ -1438,10 +1439,14 @@ public extension Node {
         return Node(op: .catWith(with, dim: dim), inputs: [self, with])
     }
 
-    func interpolateNearest(scaleFactor: Int, dataLayout: convDataLayout) -> Node {
-        return Node(op: .interpolateNearest(scaleFactor: scaleFactor, dataLayout: dataLayout), inputs: [self])
+    func interpolateNearest(scaleFactor: Float, dataLayout: convDataLayout, alignCorners: Bool = false) -> Node {
+        return Node(op: .interpolateNearest(scaleFactor: scaleFactor, dataLayout: dataLayout, alignCorners: alignCorners), inputs: [self])
     }
 
+    func interpolateBilinear(scaleFactor: Float, dataLayout: convDataLayout, alignCorners: Bool = false) -> Node {
+        return Node(op: .interpolateBilinear(scaleFactor: scaleFactor, dataLayout: dataLayout, alignCorners: alignCorners), inputs: [self])
+    }
+    
     func expandDim(_ dim: Int) -> Node {
         return Node(op: .expandDim(dim), inputs: [self])
     }
@@ -1635,6 +1640,11 @@ public extension Node {
                 if params.useBias {
                     stateDict.registerParameter(name: params.biasName)
                 }
+            case .conv2dTranspose(let params):
+                stateDict.registerParameter(name: params.weightName)
+                if params.useBias {
+                    stateDict.registerParameter(name: params.biasName)
+                }
             case .linear(let weights, let bias):
                 stateDict.registerParameter(name: weights.name!)
                 if let bias = bias {
@@ -1711,11 +1721,16 @@ extension Node {
     }
 }
 
-extension Conv2DParams {
+public extension Conv2DParams {
     /// Format: [outChannels, inChannels/groups, kernelHeight, kernelWidth]
     public var weightShape: [Int] {
         let inChannelsPerGroup = inChannels / groups
         return [outChannels, inChannelsPerGroup, kernelSize.0, kernelSize.1]
+    }
+    
+    public var weightShapeTranspose: [Int] {
+        let inChannelsPerGroup = inChannels / groups
+        return [inChannelsPerGroup, outChannels, kernelSize.0, kernelSize.1]
     }
 
     public var weightShapeOHWI: [Int] {
@@ -1732,22 +1747,22 @@ extension Conv2DParams {
     }
 }
 
-extension Node {
-    public var convWeightShape: [Int]? {
-        switch self.op {
-        case .conv2d(let params):
-            return params.weightShape
-        default:
-            return nil
-        }
-    }
-
-    public var convBiasShape: [Int]? {
-        switch self.op {
-        case .conv2d(let params):
-            return params.biasShape
-        default:
-            return nil
-        }
-    }
-}
+//extension Node {
+//    public var convWeightShape: [Int]? {
+//        switch self.op {
+//        case .conv2d(let params):
+//            return params.weightShape
+//        default:
+//            return nil
+//        }
+//    }
+//
+//    public var convBiasShape: [Int]? {
+//        switch self.op {
+//        case .conv2d(let params):
+//            return params.biasShape
+//        default:
+//            return nil
+//        }
+//    }
+//}
