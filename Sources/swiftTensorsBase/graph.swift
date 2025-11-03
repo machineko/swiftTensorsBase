@@ -196,7 +196,7 @@ public enum graphOp: Sendable {
     case shapeOf(of: Node)
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
     case randomUniform(shape: [Int], seed: Int, dataType: dataType)
-    case conv2d(Conv2DParams)
+    case conv2d(Conv2DParams), conv2dTranspose(Conv2DParams)
     
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
@@ -255,6 +255,24 @@ public extension Conv2DParams {
             kernelSize: kernelSize,
             stride: stride,
             padding: (padding.1, padding.1, padding.0, padding.0),  // Expand (pad_h, pad_w) -> (left, right, top, bottom)
+            padStyle: padStyle,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: name,
+            encryptionParams: encryptionParams
+        )
+    }
+    
+    init(inChannels: Int, outChannels: Int, kernelSize: (Int, Int), dilation: (Int, Int) = (1, 1), groups: Int = 1, padStyle: padStyle, useBias: Bool = true, dataLayout: convDataLayout = .NCHW, dataType: dataType, name: String, encryptionParams: EncryptionInfo? = nil) {
+        self.init(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: (1, 1),
+            padding: (0,0,0,0),
             padStyle: padStyle,
             dilation: dilation,
             groups: groups,
@@ -324,6 +342,8 @@ extension Node {
         case .arange(_, _, _, let dataType):
             return dataType
         case .conv2d(let params):
+            return params.dataType
+        case .conv2dTranspose(let params):
             return params.dataType
         case .conv2dEncrypted(let params, _):
             return params.dataType
@@ -410,6 +430,7 @@ extension Node {
             return .int64
         case .randomUniform(shape: let shape, seed: let seed, let dataType):
             return dataType
+
         }
     }
     
@@ -525,6 +546,9 @@ extension Node {
         // Conv operations
         case .conv2d(let params):
             return inferConv2DShape(params: params)
+        case .conv2dTranspose(let params):
+            fatalError("Impelement")
+//            inferConv2DShape(params: params)
         case .conv2dEncrypted(let params, _):
             return inferConv2DShape(params: params)
             
@@ -564,6 +588,7 @@ extension Node {
             return [inputShape.count]
         case .randomUniform(shape: let shape, seed: let seed, _):
             return shape
+
         }
     }
     
@@ -861,6 +886,99 @@ extension Node {
         }
     }
     
+    private func inferConv2DTransposeShape(params: Conv2DParams) -> [Int] {
+        guard let input = inputs.first else { return [] }
+        let inputShape = input.shape
+        
+        // Extract padding: (left, right, top, bottom) - PyTorch convention
+        let (padLeft, padRight, padTop, padBottom) = params.padding
+        let totalHeightPad = padTop + padBottom
+        let totalWidthPad = padLeft + padRight
+        
+        if params.dataLayout == .NCHW {
+            guard inputShape.count == 4 else { return [] }
+            let batch = inputShape[0]
+            let outChannels = params.outChannels
+            let h = inputShape[2]
+            let w = inputShape[3]
+            
+            let outH: Int
+            let outW: Int
+            
+            if h == -1 {
+                outH = -1
+            } else {
+                // Transpose convolution formula: output = (input - 1) * stride - 2 * padding + dilation * (kernel - 1) + 1
+                let effectiveKernelH = params.dilation.0 * (params.kernelSize.0 - 1) + 1
+                
+                switch params.padStyle {
+                case .explicit:
+                    outH = (h - 1) * params.stride.0 - totalHeightPad + effectiveKernelH
+                case .same:
+                    outH = h * params.stride.0
+                case .valid:
+                    outH = (h - 1) * params.stride.0 + params.kernelSize.0
+                }
+            }
+            
+            if w == -1 {
+                outW = -1
+            } else {
+                let effectiveKernelW = params.dilation.1 * (params.kernelSize.1 - 1) + 1
+                
+                switch params.padStyle {
+                case .explicit:
+                    outW = (w - 1) * params.stride.1 - totalWidthPad + effectiveKernelW
+                case .same:
+                    outW = w * params.stride.1
+                case .valid:
+                    outW = (w - 1) * params.stride.1 + params.kernelSize.1
+                }
+            }
+            return [batch, outChannels, outH, outW]
+        } else { // NHWC
+            guard inputShape.count == 4 else { return [] }
+            let batch = inputShape[0]
+            let h = inputShape[1]
+            let w = inputShape[2]
+            let outChannels = params.outChannels
+            
+            let outH: Int
+            let outW: Int
+            
+            if h == -1 {
+                outH = -1
+            } else {
+                let effectiveKernelH = params.dilation.0 * (params.kernelSize.0 - 1) + 1
+                
+                switch params.padStyle {
+                case .explicit:
+                    outH = (h - 1) * params.stride.0 - totalHeightPad + effectiveKernelH
+                case .same:
+                    outH = h * params.stride.0
+                case .valid:
+                    outH = (h - 1) * params.stride.0 + params.kernelSize.0
+                }
+            }
+            
+            if w == -1 {
+                outW = -1
+            } else {
+                let effectiveKernelW = params.dilation.1 * (params.kernelSize.1 - 1) + 1
+                
+                switch params.padStyle {
+                case .explicit:
+                    outW = (w - 1) * params.stride.1 - totalWidthPad + effectiveKernelW
+                case .same:
+                    outW = w * params.stride.1
+                case .valid:
+                    outW = (w - 1) * params.stride.1 + params.kernelSize.1
+                }
+            }
+            return [batch, outH, outW, outChannels]
+        }
+    }
+    
     private func inferLinearShape(weights: Node) -> [Int] {
         guard let input = inputs.first else { return [] }
         let inputShape = input.shape
@@ -1050,6 +1168,39 @@ public extension Node {
         return Node(op: .conv2d(params), inputs: [input])
     }
     
+    static func conv2dTranspose(
+        input: Node,
+        inChannels: Int,
+        outChannels: Int,
+        kernelSize: (Int, Int) = (1, 1),
+        stride: (Int, Int) = (1, 1),
+        padding: (Int, Int) = (0, 0),
+        dilation: (Int, Int) = (1, 1),
+        groups: Int = 1,
+        dataLayout: convDataLayout = .NCHW,
+        dataType: dataType = .float32,
+        name: String? = nil,
+        useBias: Bool = true,
+        scopeManager: ScopeManager
+    ) -> Node {
+        let fullName = scopeManager.fullPath(for: name ?? "conv")
+        let params = Conv2DParams(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: stride,
+            padding: padding,
+            padStyle: .explicit,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: fullName
+        )
+        return Node(op: .conv2dTranspose(params), inputs: [input])
+    }
+    
     static func conv2dEncrypted(
         input: Node,
         inChannels: Int,
@@ -1135,6 +1286,39 @@ public extension Node {
         )
         return Node(op: .conv2d(params), inputs: [input])
     }
+    
+    static func conv2dTranspose(
+        input: Node,
+        inChannels: Int,
+        outChannels: Int,
+        kernelSize: (Int, Int) = (1, 1),
+        stride: (Int, Int) = (1, 1),
+        dilation: (Int, Int) = (1, 1),
+        groups: Int = 1,
+        padStyle: padStyle,
+        dataLayout: convDataLayout = .NCHW,
+        dataType: dataType = .float32,
+        name: String? = nil,
+        useBias: Bool = true,
+        scopeManager: ScopeManager
+    ) -> Node {
+        let fullName = scopeManager.fullPath(for: name ?? "conv")
+        let params = Conv2DParams(
+            inChannels: inChannels,
+            outChannels: outChannels,
+            kernelSize: kernelSize,
+            stride: stride,
+            padding: (0, 0),
+            padStyle: padStyle,
+            dilation: dilation,
+            groups: groups,
+            useBias: useBias,
+            dataLayout: dataLayout,
+            dataType: dataType,
+            name: fullName
+        )
+        return Node(op: .conv2dTranspose(params), inputs: [input])
+    }
 
     static func transpose(input: Node, dim: Int, with: Int) -> Node {
         return Node(op: .transpose(dim, with), inputs: [input])
@@ -1214,7 +1398,10 @@ public extension Node {
     func triu(_ diagonal: Int = 0, value: Float = 0) -> Node {
         return Node(op: .triu(diagonal: diagonal, value: value), inputs: [self])
     }
-
+    
+    func tile(_ dims: [Int]) -> Node {
+        return Node(op: .tile(dims), inputs: [self])
+    }
 
     func split(
         numSplits: Int,
