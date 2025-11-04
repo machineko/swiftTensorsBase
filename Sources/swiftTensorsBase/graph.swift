@@ -217,7 +217,7 @@ fileprivate func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     case .conv2d(let params):
         return inferConv2DShapeHelper(temp.inputs, params: params)
     case .conv2dTranspose(let params):
-        return []  // TODO: implement
+        return inferConv2DTransposeShape(temp.inputs, params: params)
     case .conv2dEncrypted(let params, _):
         return inferConv2DShapeHelper(temp.inputs, params: params)
     case .linear(let weights, _):
@@ -422,6 +422,99 @@ fileprivate func inferSliceStaticShapeHelper(_ inputs: [Node], from: [Int], upTo
         }
     }
     return result
+}
+
+fileprivate func inferConv2DTransposeShape(_ inputs: [Node], params: Conv2DParams) -> [Int] {
+    guard let input = inputs.first else { return [] }
+
+    let inputShape = input.shape
+    
+    let (padLeft, padRight, padTop, padBottom) = params.padding
+    let totalHeightPad = padTop + padBottom
+    let totalWidthPad = padLeft + padRight
+    
+    if params.dataLayout == .NCHW {
+        guard inputShape.count == 4 else { return [] }
+        let batch = inputShape[0]
+        let outChannels = params.outChannels
+        let h = inputShape[2]
+        let w = inputShape[3]
+        
+        let outH: Int
+        let outW: Int
+        
+        if h == -1 {
+            outH = -1
+        } else {
+            // Transpose convolution formula: output = (input - 1) * stride - 2 * padding + dilation * (kernel - 1) + 1
+            let effectiveKernelH = params.dilation.0 * (params.kernelSize.0 - 1) + 1
+            
+            switch params.padStyle {
+            case .explicit:
+                outH = (h - 1) * params.stride.0 - totalHeightPad + effectiveKernelH
+            case .same:
+                outH = h * params.stride.0
+            case .valid:
+                outH = (h - 1) * params.stride.0 + params.kernelSize.0
+            }
+        }
+        
+        if w == -1 {
+            outW = -1
+        } else {
+            let effectiveKernelW = params.dilation.1 * (params.kernelSize.1 - 1) + 1
+            
+            switch params.padStyle {
+            case .explicit:
+                outW = (w - 1) * params.stride.1 - totalWidthPad + effectiveKernelW
+            case .same:
+                outW = w * params.stride.1
+            case .valid:
+                outW = (w - 1) * params.stride.1 + params.kernelSize.1
+            }
+        }
+        return [batch, outChannels, outH, outW]
+    } else { // NHWC
+        guard inputShape.count == 4 else { return [] }
+        let batch = inputShape[0]
+        let h = inputShape[1]
+        let w = inputShape[2]
+        let outChannels = params.outChannels
+        
+        let outH: Int
+        let outW: Int
+        
+        if h == -1 {
+            outH = -1
+        } else {
+            let effectiveKernelH = params.dilation.0 * (params.kernelSize.0 - 1) + 1
+            
+            switch params.padStyle {
+            case .explicit:
+                outH = (h - 1) * params.stride.0 - totalHeightPad + effectiveKernelH
+            case .same:
+                outH = h * params.stride.0
+            case .valid:
+                outH = (h - 1) * params.stride.0 + params.kernelSize.0
+            }
+        }
+        
+        if w == -1 {
+            outW = -1
+        } else {
+            let effectiveKernelW = params.dilation.1 * (params.kernelSize.1 - 1) + 1
+            
+            switch params.padStyle {
+            case .explicit:
+                outW = (w - 1) * params.stride.1 - totalWidthPad + effectiveKernelW
+            case .same:
+                outW = w * params.stride.1
+            case .valid:
+                outW = (w - 1) * params.stride.1 + params.kernelSize.1
+            }
+        }
+        return [batch, outH, outW, outChannels]
+    }
 }
 
 fileprivate func inferConv2DShapeHelper(_ inputs: [Node], params: Conv2DParams) -> [Int] {
@@ -966,7 +1059,7 @@ extension Node {
         case .conv2d(let params):
             return inferConv2DShape(params: params)
         case .conv2dTranspose(let params):
-            fatalError("Impelement")
+            return inferConv2DTransposeShape(params: params)
 //            inferConv2DShape(params: params)
         case .conv2dEncrypted(let params, _):
             return inferConv2DShape(params: params)
