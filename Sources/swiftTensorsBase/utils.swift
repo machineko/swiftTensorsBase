@@ -1,3 +1,5 @@
+import Foundation
+
 func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     struct TempNodeWrapper {
         let op: graphOp
@@ -15,9 +17,12 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     case .constantScalar(_, let shape, _):
         return shape
     case .arange(let start, let end, let step, _):
-        let count = (end - start + step - 1) / step
+        let count = Int(ceil(Double(end - start) / Double(step)))
         return [count]
     case .add, .subtract, .mul, .division:
+        guard temp.inputs.count == 2 else { return [] }
+        return broadcastShapesHelper(temp.inputs[0].shape, temp.inputs[1].shape)
+    case .greater, .greaterEqual:
         guard temp.inputs.count == 2 else { return [] }
         return broadcastShapesHelper(temp.inputs[0].shape, temp.inputs[1].shape)
     case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos:
@@ -110,6 +115,10 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
         return shape
     case .degree2radians:
         return temp.inputs.first?.shape ?? []
+    case .brodcast(let shape):
+        return shape
+    case .linspace(start: let start, end: let end, steps: let steps, dataType: let dataType):
+        return [steps]
     }
 }
 
@@ -146,7 +155,7 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
     case .dequantizePerChannel(_, _, _, let targetType):
         return targetType
     
-    case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos:
+    case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos, .greater, .greaterEqual:
         return inputs.first?.dataType ?? .float32
     case .leakyRelu:
         return inputs.first?.dataType ?? .float32
@@ -209,6 +218,10 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
         return dataType
     case .degree2radians:
         return inputs.first?.dataType ?? .float32
+    case .brodcast(_):
+        return inputs.first?.dataType ?? .float32
+    case .linspace(start: let start, end: let end, steps: let steps, dataType: let dataType):
+        return dataType
     }
 }
 

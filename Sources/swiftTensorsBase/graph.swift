@@ -57,6 +57,8 @@ public enum ExecutionError: Sendable, Codable, Error {
     case parameterNotFound
 }
 
+
+
 enum GraphError: Sendable, Codable, Error {
     case cycleDetected
 }
@@ -170,12 +172,13 @@ public enum graphOp: Sendable {
     case catWith(_ with: Node, dim: Int)
     case splitOutput(parentNode: UUID, index: Int)
     case add, subtract, mul, division
+    case greater(_ lhs: Node, _ rhs: Node), greaterEqual(_ lhs: Node, _ rhs: Node)
     case to(_ dataType: dataType)
     case matMul
     case clamp(_ min: Node, _ max: Node)
     case mean(_ dim: Int)
     case sum(_ dim: Int)
-    case arange(start: Int, end: Int, step: Int, dataType: dataType)
+    case arange(start: Float, end: Float, step: Float, dataType: dataType), linspace(start: Float, end: Float, steps: Int, dataType: dataType)
     case sliceDim(_ dim: Int, upTo: Node)
     case sliceStatic(from: [Int], upTo: [Int], stride: [Int])
     case sliceStaticDim(_ dim: Int, start: Int, upTo: Int)
@@ -193,10 +196,11 @@ public enum graphOp: Sendable {
     case log, exp, exp2
     case reduceMaximum(_ dim: Int)
     case shapeOf(of: Node)
+    case brodcast(_ shape: [Int])
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
+//    case normalize(mean: Node, std: Node, variance: Node, gamma: Node?, beta: Node?, eps: Float)
     case randomUniform(shape: [Int], seed: Int, dataType: dataType)
     case conv2d(Conv2DParams), conv2dTranspose(Conv2DParams)
-    
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dynamicQuantize(targetType: dataType)
@@ -331,9 +335,14 @@ extension Node {
 
 public extension Node {
     
-    static func arange(_ start: Int, _ end: Int, step: Int = 1, dataType: dataType = .float32) -> Node {
+    static func arange(_ start: Float, _ end: Float, step: Float = 1, dataType: dataType = .float32) -> Node {
         return .init(op: .arange(start: start, end: end, step: step, dataType: dataType))
     }
+    
+    static func linspace(_ start: Float, _ end: Float, steps: Int, dataType: dataType = .float32) -> Node {
+        return .init(op: .linspace(start: start, end: end, steps: steps, dataType: dataType))
+    }
+    
     static func + (lhs: Node, rhs: Node) -> Node {
         return .init(op: .add, inputs: [lhs, rhs])
     }
@@ -350,6 +359,13 @@ public extension Node {
         return .init(op: .division, inputs: [lhs, rhs])
     }
 
+    static func > (lhs: Node, rhs: Node) -> Node {
+        return .init(op: .greater(lhs, rhs), inputs: [lhs, rhs])
+    }
+    
+    static func >= (lhs: Node, rhs: Node) -> Node {
+        return .init(op: .greaterEqual(lhs, rhs), inputs: [lhs, rhs])
+    }
     static func relu(_ input: Node) -> Node {
         return .init(op: .relu, inputs: [input])
     }
@@ -661,6 +677,10 @@ public extension Node {
     func tile(_ dims: [Int]) -> Node {
         return Node(op: .tile(dims), inputs: [self])
     }
+    
+    func brodcast(_ shape: [Int]) -> Node {
+        return .init(op: .brodcast(shape), inputs: [self])
+    }
 
     func split(
         numSplits: Int,
@@ -797,10 +817,10 @@ public extension Node {
     func degree2radians() -> Node {
         return Node(op: .degree2radians, inputs: [self])
     }
+    
     func reduceMaximum(dim: Int) -> Node {
         return Node(op: .reduceMaximum(dim), inputs: [self])
     }
-    
 
 }
 
