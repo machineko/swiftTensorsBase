@@ -22,7 +22,7 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     case .add, .subtract, .mul, .division:
         guard temp.inputs.count == 2 else { return [] }
         return broadcastShapesHelper(temp.inputs[0].shape, temp.inputs[1].shape)
-    case .greater, .greaterEqual:
+    case .greater, .greaterEqual, .less, .lessEqual:
         guard temp.inputs.count == 2 else { return [] }
         return broadcastShapesHelper(temp.inputs[0].shape, temp.inputs[1].shape)
     case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos:
@@ -111,7 +111,7 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     case .shapeOf(let ofNode):
         let inputShape = ofNode.shape
         return [inputShape.count]
-    case .randomUniform(shape: let shape, seed: _, _):
+    case .randomUniform(shape: let shape, seed: _, _), .randomNormal(shape: let shape, _, _):
         return shape
     case .degree2radians:
         return temp.inputs.first?.shape ?? []
@@ -155,7 +155,7 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
     case .dequantizePerChannel(_, _, _, let targetType):
         return targetType
     
-    case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos, .greater, .greaterEqual:
+    case .relu, .tanh, .tan, .gelu, .sigmoid, .silu, .sin, .cos, .greater, .greaterEqual, .less,. lessEqual:
         return inputs.first?.dataType ?? .float32
     case .leakyRelu:
         return inputs.first?.dataType ?? .float32
@@ -214,7 +214,7 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
         return inputs.first?.dataType ?? .float32
     case .argMax:
         return .int64
-    case .randomUniform(_, _, let dataType):
+    case .randomUniform(_, _, let dataType), .randomNormal(_, _, let dataType):
         return dataType
     case .degree2radians:
         return inputs.first?.dataType ?? .float32

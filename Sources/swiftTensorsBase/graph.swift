@@ -172,7 +172,7 @@ public enum graphOp: Sendable {
     case catWith(_ with: Node, dim: Int)
     case splitOutput(parentNode: UUID, index: Int)
     case add, subtract, mul, division
-    case greater(_ lhs: Node, _ rhs: Node), greaterEqual(_ lhs: Node, _ rhs: Node)
+    case greater(_ lhs: Node, _ rhs: Node), greaterEqual(_ lhs: Node, _ rhs: Node), less(_ lhs: Node, _ rhs: Node), lessEqual(_ lhs: Node, _ rhs: Node)
     case to(_ dataType: dataType)
     case matMul
     case clamp(_ min: Node, _ max: Node)
@@ -199,7 +199,7 @@ public enum graphOp: Sendable {
     case brodcast(_ shape: [Int])
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
 //    case normalize(mean: Node, std: Node, variance: Node, gamma: Node?, beta: Node?, eps: Float)
-    case randomUniform(shape: [Int], seed: Int, dataType: dataType)
+    case randomUniform(shape: [Int], seed: Int, dataType: dataType), randomNormal(shape: [Int], seed: Int, dataType: dataType)
     case conv2d(Conv2DParams), conv2dTranspose(Conv2DParams)
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
@@ -366,6 +366,16 @@ public extension Node {
     static func >= (lhs: Node, rhs: Node) -> Node {
         return .init(op: .greaterEqual(lhs, rhs), inputs: [lhs, rhs])
     }
+    
+    static func < (lhs: Node, rhs: Node) -> Node {
+        return .init(op: .less(lhs, rhs), inputs: [lhs, rhs])
+    }
+    
+    static func <= (lhs: Node, rhs: Node) -> Node {
+        return .init(op: .lessEqual(lhs, rhs), inputs: [lhs, rhs])
+    }
+    
+    
     static func relu(_ input: Node) -> Node {
         return .init(op: .relu, inputs: [input])
     }
@@ -621,6 +631,10 @@ public extension Node {
     
     static func randomUniform(_ shape: [Int], seed: Int = 0, dataType: dataType = .float32) -> Node {
         return Node(op: .randomUniform(shape: shape, seed: seed, dataType: dataType))
+    }
+    
+    static func randomNormal(_ shape: [Int], seed: Int = 0, dataType: dataType = .float32) -> Node {
+        return Node(op: .randomNormal(shape: shape, seed: seed, dataType: dataType))
     }
 
 }
