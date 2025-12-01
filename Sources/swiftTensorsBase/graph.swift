@@ -199,7 +199,7 @@ public enum graphOp: Sendable {
     case brodcast(_ shape: [Int])
     case groupNorm2d(groups: Int, channels: Int, eps: Float, weights: Node? = nil, bias: Node? = nil, affine: Bool = true, dataLayout: convDataLayout = .NCHW)
 //    case normalize(mean: Node, std: Node, variance: Node, gamma: Node?, beta: Node?, eps: Float)
-    case randomUniform(shape: [Int], seed: Int, dataType: dataType), randomNormal(shape: [Int], seed: Int, dataType: dataType)
+    case randomUniform(shape: [Int], seed: Int, dataType: dataType), randomNormal(shape: [Int], mean: Float?, std: Float?, seed: Int, dataType: dataType)
     case conv2d(Conv2DParams), conv2dTranspose(Conv2DParams)
     case quantize(scale: Float, zeroPoint: Float, targetType: dataType)
     case dequantize(scale: Float, zeroPoint: Float, targetType: dataType)
@@ -633,8 +633,12 @@ public extension Node {
         return Node(op: .randomUniform(shape: shape, seed: seed, dataType: dataType))
     }
     
+    static func randomNormal(_ shape: [Int], mean: Float? = nil, std: Float? = nil, seed: Int = 0, dataType: dataType = .float32) -> Node {
+        return Node(op: .randomNormal(shape: shape, mean: mean, std: std, seed: seed, dataType: dataType))
+    }
+    
     static func randomNormal(_ shape: [Int], seed: Int = 0, dataType: dataType = .float32) -> Node {
-        return Node(op: .randomNormal(shape: shape, seed: seed, dataType: dataType))
+        return Node(op: .randomNormal(shape: shape, mean: nil, std: nil, seed: seed, dataType: dataType))
     }
 
 }
@@ -855,21 +859,40 @@ public extension Node {
     func generateTopologicalOrder() -> [Node] {
         var visited = Set<UUID>()
         var result = [Node]()
-
-        func visit(_ node: Node) {
+        var stack: [Node] = [self]
+        
+        // To avoid recursion, we need to simulate the call stack.
+        // We can track if we have expanded a node.
+        // Or simpler: use two stacks or one stack with state.
+        
+        // State: 0 = pre-visit (expand children), 1 = post-visit (add to result)
+        var workStack: [(Node, Bool)] = [(self, false)] // (node, visitedChildren)
+        
+        while !workStack.isEmpty {
+            let (node, childrenVisited) = workStack.last!
+            
             if visited.contains(node.id) {
-                return
+                workStack.removeLast()
+                continue
             }
-
-            for input in node.inputs {
-                visit(input)
+            
+            if childrenVisited {
+                workStack.removeLast()
+                visited.insert(node.id)
+                result.append(node)
+            } else {
+                // Mark as children visited for next time
+                workStack[workStack.count - 1] = (node, true)
+                
+                // Add inputs
+                for input in node.inputs {
+                    if !visited.contains(input.id) {
+                        workStack.append((input, false))
+                    }
+                }
             }
-
-            visited.insert(node.id)
-            result.append(node)
         }
-
-        visit(self)
+        
         return result
     }
 }

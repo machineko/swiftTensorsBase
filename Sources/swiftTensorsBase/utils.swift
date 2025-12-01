@@ -111,7 +111,7 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     case .shapeOf(let ofNode):
         let inputShape = ofNode.shape
         return [inputShape.count]
-    case .randomUniform(shape: let shape, seed: _, _), .randomNormal(shape: let shape, _, _):
+    case .randomUniform(shape: let shape, seed: _, _), .randomNormal(shape: let shape, _, _, _, _):
         return shape
     case .degree2radians:
         return temp.inputs.first?.shape ?? []
@@ -214,7 +214,7 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
         return inputs.first?.dataType ?? .float32
     case .argMax:
         return .int64
-    case .randomUniform(_, _, let dataType), .randomNormal(_, _, let dataType):
+    case .randomUniform(_, _, let dataType), .randomNormal(_, _, _, _, let dataType):
         return dataType
     case .degree2radians:
         return inputs.first?.dataType ?? .float32
