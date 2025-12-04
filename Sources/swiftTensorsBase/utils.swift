@@ -1,5 +1,6 @@
 import Foundation
 
+
 func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
     struct TempNodeWrapper {
         let op: graphOp

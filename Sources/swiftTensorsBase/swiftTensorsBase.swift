@@ -2,7 +2,7 @@ import Logging
 
 nonisolated(unsafe) public var logger = Logger(label: "swiftTensors.logger")
 
-extension dataType {
+public extension dataType {
     public var byteSize: Int {
         switch self {
         case .float16:
@@ -46,6 +46,7 @@ extension dataType {
             return 8
         }
     }
+    
 
     public func stride(for count: Int) -> Int {
         let size = count * byteSize
