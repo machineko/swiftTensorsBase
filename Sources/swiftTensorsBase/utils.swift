@@ -120,6 +120,12 @@ func computeShapeForInit(op: graphOp, inputs: [Node]) -> [Int] {
         return shape
     case .linspace(start: let start, end: let end, steps: let steps, dataType: let dataType):
         return [steps]
+    case .repeatTensor(let times, let dim):
+        guard var tmpShape = temp.inputs.first?.shape else {
+            return []
+        }
+        tmpShape[dim] = tmpShape[dim] * times
+        return tmpShape
     }
 }
 
@@ -219,7 +225,7 @@ func computeDataTypeForInit(op: graphOp, inputs: [Node]) -> dataType {
         return dataType
     case .degree2radians:
         return inputs.first?.dataType ?? .float32
-    case .brodcast(_):
+    case .brodcast(_), .repeatTensor(_, _):
         return inputs.first?.dataType ?? .float32
     case .linspace(start: let start, end: let end, steps: let steps, dataType: let dataType):
         return dataType

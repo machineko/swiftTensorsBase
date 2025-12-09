@@ -165,7 +165,7 @@ public enum graphOp: Sendable {
     case split(_ numSplits: Int, dim: Int)
     case transpose(_ dim: Int, _ with: Int)
     case permute(_ dims: [Int])
-    case tile(_ dims: [Int])
+    case tile(_ dims: [Int]), repeatTensor(_ times: Int, _ dim: Int)
     case reshape(shape: [Int]), reshapeWith(withShape: Node)
     case expandDim(_ dim: Int)
     case cat(_ dim: Int)
@@ -694,6 +694,11 @@ public extension Node {
     
     func tile(_ dims: [Int]) -> Node {
         return Node(op: .tile(dims), inputs: [self])
+    }
+    
+    func repeatTensor(_ times: Int, dim: Int) -> Node {
+        return Node(op: .repeatTensor(times, dim), inputs: [self])
+
     }
     
     func brodcast(_ shape: [Int]) -> Node {
